@@ -302,7 +302,7 @@ it disabled.
 is right for a mature app and wrong for a first release. 21 groups x 3
 intensities x 2 lines minimum is 126 lines before a single pack is even
 valid, which is a content wall standing between the project and a working
-app. v1 ships 8 groups, the schema supports all 21, and the selector falls
+app. v1 ships 9 groups, the schema supports all 21, and the selector falls
 back gracefully so adding groups later is additive rather than a migration.
 Ship the skeleton, fill it in over time.
 
@@ -334,5 +334,9 @@ voices are an upgrade path, not a requirement.
 - Target hardware: MSI GF63 Thin 11SC, GTX 1650 Max-Q 4 GB VRAM,
   i5-11400H, 32 GB DDR4. Local generation is viable on CPU for batch work;
   API remains the default for speed. See section 4.
-- Reaction group count for v1: reduced to 8. Rationale in section 8.
+- Reaction group count for v1: reduced to 9. Rationale in section 6.
+  Planning wrote 8; `reunion_5_through_60` was added during the step 3
+  build (2026-09-02) because omitting it sends every 5-to-60-minute
+  absence to the under-5-minute lines. Three lines per intensity, so it
+  does not reopen the content-wall argument.
 - The Instagram reel is out of scope. Marketing reach is not a build input.

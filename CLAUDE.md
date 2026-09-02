@@ -34,6 +34,7 @@ Decided during planning. Do not re-open without being asked.
 |---|---|
 | Event detection | Hidden message-only window, `WM_POWERBROADCAST` (0x218) + `PBT_APMPOWERSTATUSCHANGE` (0xA), then `GetSystemPowerStatus` for state. Event driven, never poll. |
 | State comparison | Always diff against last known AC status. The message also fires on battery-percentage changes, so not every message is a plug event. |
+| Windows API binding | `ctypes`, not `pywin32`. `pywin32` cannot install in the Linux dev environment, so depending on it would make the whole module unimportable here rather than just unverifiable. |
 | Battery data | `psutil.sensors_battery()` for percent and `power_plugged` |
 | Tray | `pystray` |
 | Packaging | PyInstaller, single exe |
@@ -63,12 +64,21 @@ Decided during planning. Do not re-open without being asked.
 One JSON file per pack. Three intensity levels. Same reaction groups in
 each, two lines minimum per group.
 
-**v1 ships 8 groups.** The schema supports the full set below, but only
+**v1 ships 9 groups.** The schema supports the full set below, but only
 these are required for a pack to be valid, and only these are populated for
 now:
 
 `immediate`, `immediate_late_night`, `escalation_30`, `escalation_60`,
-`rapid_3`, `rapid_10`, `reunion_under_5`, `reunion_over_60`
+`rapid_3`, `rapid_10`, `reunion_under_5`, `reunion_5_through_60`,
+`reunion_over_60`
+
+Planning said 8 and omitted `reunion_5_through_60`. That was an oversight,
+not a decision: without it the middle of the three reunion durations falls
+back to the under-5-minute pool, so a 40-minute absence gets a line written
+for a 40-second one. It is 3 lines per intensity, so the content-wall
+argument below does not apply. `groups.py` and `field_notes.json` have
+required and populated it since the core was built; this file was corrected
+to match on 2026-09-02.
 
 Rationale: 21 groups x 3 intensities x 2 lines is 126 lines before one pack
 is even complete. That is a content wall in front of a working app. Ship
@@ -127,10 +137,10 @@ exclude it from the next draw when the group has more than one candidate.
 
 ## Build order
 
-1. Repo structure, `requirements.txt`, `.gitignore` (must ignore `.env`)
-2. Pack schema doc plus one sample pack with original lines
-3. State machine and line selector, with tests
-4. `--simulate plug|unplug` and CLI entry point
+1. [done] Repo structure, `requirements.txt`, `.gitignore` (must ignore `.env`)
+2. [done] Pack schema doc plus one sample pack with original lines
+3. [done] State machine and line selector, with tests
+4. [done] `--simulate plug|unplug` and CLI entry point
 5. Tray icon and audio playback
 6. Windows power hook (unverifiable here, keep thin)
 7. TTS render script
@@ -138,6 +148,51 @@ exclude it from the next draw when the group has more than one candidate.
 
 Stop after step 4 and report. Do not build 5 through 8 until the core is
 confirmed working on Windows hardware.
+
+### Current position (2026-09-02)
+
+Steps 1-4 are built and committed on branch `core-pipeline` (`a0e6733`,
+215 tests). The gate above is **not yet cleared**: nothing has run on the
+MSI laptop.
+
+What exists: `power/` (interface + fake only), `groups.py`, `state.py`,
+`selector.py`, `variables.py`, `validate.py`, `packs.py`, `pipeline.py`,
+`cli.py`, `packs/field_notes.json` (81 lines), and a test file per module.
+
+Next action is verification, not code. On the Windows laptop, `git pull`
+then:
+
+```
+pip install -r requirements-dev.txt
+pytest
+python -m chargerwin --validate
+python -m chargerwin --simulate unplug --state-dir %TEMP%\cw
+python -m chargerwin --simulate tick   --state-dir %TEMP%\cw --now <+31min>
+python -m chargerwin --simulate plug   --state-dir %TEMP%\cw
+```
+
+That confirms the core is sound on the target OS without needing the power
+hook to exist yet. Step 5 unlocks once it passes.
+
+Decisions made during the build that are not obvious from the code:
+
+- `--simulate` gained a third mode, `tick`, which fires whatever escalation
+  is due. Escalations are timer-driven and so had no other way to be
+  exercised from the CLI.
+- The 160-character cap is validated against *worst-case* rendered width
+  (`variables.WORST_CASE`), not raw source text. A line that fits until
+  `{{absence_human}}` expands is a bug that only shows up in front of a
+  user.
+- Escalation groups never fall back to `immediate`. The general fallback
+  chain in this file allows it; in practice a "you just unplugged" line is
+  the wrong tone an hour in, so escalations stop at the lowest populated
+  escalation. Rapid groups still fall back to `immediate`, which is right,
+  because a rapid group is still a disconnect moment.
+- A disconnect within 10 minutes of the previous one extends the toggle
+  streak (`state.STREAK_WINDOW_SECONDS`); a streak of 3+ routes a reconnect
+  to `rapid_reunion`. Planning never fixed these numbers.
+- Elapsed time is clamped at zero, so a backward clock step (DST, NTP
+  correction, laptop resume) cannot produce a negative absence.
 
 ## Secrets
 
