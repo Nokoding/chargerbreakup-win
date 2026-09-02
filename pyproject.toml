@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chargerwin"
+version = "0.1.0"
+description = "Windows tray app that talks back when you unplug the charger."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "psutil>=5.9",
+    "pystray>=0.19",
+    "Pillow>=10",
+    "pyttsx3>=2.90",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5"]
+
+[project.scripts]
+chargerwin = "chargerwin.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["chargerwin*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

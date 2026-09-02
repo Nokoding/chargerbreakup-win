@@ -1,0 +1,397 @@
+{
+  "schema_version": 1,
+  "id": "field_notes",
+  "name": "Field Notes",
+  "summary": "A wildlife documentary narrator has been assigned to you. It is not going well for either of you.",
+  "voice": {
+    "rate": 0.9,
+    "volume": 1.0,
+    "preferred_voice": null
+  },
+  "intensities": {
+    "mild": {
+      "immediate": [
+        {
+          "id": "mild.immediate.1",
+          "text": "Here we observe the human, separating from its power source. Calm. Deliberate. It has no plan. It rarely does."
+        },
+        {
+          "id": "mild.immediate.2",
+          "text": "The cable is released. The laptop, at {{battery_percent}} percent, sets off into the unknown. The unknown is, in this case, the next room."
+        },
+        {
+          "id": "mild.immediate.3",
+          "text": "A detachment. In the wild, this would signal migration. Here, it signals the sofa."
+        }
+      ],
+      "immediate_late_night": [
+        {
+          "id": "mild.immediate_late_night.1",
+          "text": "It is {{local_time}}. The human unplugs in darkness, as its ancestors never did, because they were asleep."
+        },
+        {
+          "id": "mild.immediate_late_night.2",
+          "text": "Night falls. Most creatures conserve energy now. This one has chosen a different path. A dimmer one."
+        },
+        {
+          "id": "mild.immediate_late_night.3",
+          "text": "A late night detachment. The laptop's glow will fade. The human, remarkably, will not."
+        }
+      ],
+      "escalation_30": [
+        {
+          "id": "mild.escalation_30.1",
+          "text": "Thirty minutes without power. The laptop shows the first signs of strain. The human shows no signs of anything."
+        },
+        {
+          "id": "mild.escalation_30.2",
+          "text": "Half an hour adrift, at {{battery_percent}} percent. The charger waits, patient as a stone, and roughly as loved."
+        },
+        {
+          "id": "mild.escalation_30.3",
+          "text": "Thirty minutes now. The screen dims a little. The human squints, and adjusts nothing."
+        }
+      ],
+      "escalation_60": [
+        {
+          "id": "mild.escalation_60.1",
+          "text": "One full hour on battery. This is no longer a wander. This is a lifestyle, and not a sustainable one."
+        },
+        {
+          "id": "mild.escalation_60.2",
+          "text": "Sixty minutes. {{battery_percent}} percent remaining. Somewhere, a charger lies coiled and unspent, like a hope."
+        },
+        {
+          "id": "mild.escalation_60.3",
+          "text": "An hour has passed. The laptop adapts quietly, as prey often does. The human has not adapted to anything."
+        }
+      ],
+      "rapid_3": [
+        {
+          "id": "mild.rapid_3.1",
+          "text": "The third detachment of the day. A pattern emerges. Researchers call this fidgeting. The laptop calls it nothing. It cannot speak."
+        },
+        {
+          "id": "mild.rapid_3.2",
+          "text": "Three times now. The cable goes in. The cable comes out. Nature is full of rhythms. Few are this pointless."
+        },
+        {
+          "id": "mild.rapid_3.3",
+          "text": "Unplugged, plugged, unplugged again. Three times today. Here, we simply observe. We do not intervene. We want to."
+        }
+      ],
+      "rapid_10": [
+        {
+          "id": "mild.rapid_10.1",
+          "text": "Ten detachments today. The behaviour is no longer curious. It is a documented condition, and we are documenting it."
+        },
+        {
+          "id": "mild.rapid_10.2",
+          "text": "The tenth removal. Even the cable seems to expect it now. The human has trained the charger, and not the other way round."
+        },
+        {
+          "id": "mild.rapid_10.3",
+          "text": "Ten times. If this were a mating display, it would be an unsuccessful one."
+        }
+      ],
+      "reunion_under_5": [
+        {
+          "id": "mild.reunion_under_5.1",
+          "text": "And just like that, the human returns. Gone {{absence_human}}. A brief foray. Nature, it seems, prefers the outlet."
+        },
+        {
+          "id": "mild.reunion_under_5.2",
+          "text": "Reconnected after {{absence_human}}. The laptop sighs, in its way. The human moves on, in its way. Neither will remember this by lunch."
+        },
+        {
+          "id": "mild.reunion_under_5.3",
+          "text": "A short absence, {{absence_human}}, and the cable is home. Some journeys are small. This one barely counted."
+        }
+      ],
+      "reunion_5_through_60": [
+        {
+          "id": "mild.reunion_5_through_60.1",
+          "text": "The human returns after {{absence_human}}. Battery at {{battery_percent}} percent. A modest expedition, concluded without incident. Mostly."
+        },
+        {
+          "id": "mild.reunion_5_through_60.2",
+          "text": "Power restored after {{absence_human}}. The laptop resumes charging, as it always does. Forgiving, as it always must be."
+        },
+        {
+          "id": "mild.reunion_5_through_60.3",
+          "text": "After {{absence_human}}, the reunion. There is no ceremony. There rarely is. The charger simply gets back to work."
+        }
+      ],
+      "reunion_over_60": [
+        {
+          "id": "mild.reunion_over_60.1",
+          "text": "The human returns at last. {{absence_human}} in the wilderness. The battery sits at {{battery_percent}} percent and does not ask where it has been."
+        },
+        {
+          "id": "mild.reunion_over_60.2",
+          "text": "An absence of {{absence_human}}. Long enough to worry. Not long enough, apparently, to learn."
+        },
+        {
+          "id": "mild.reunion_over_60.3",
+          "text": "Reconnected after {{absence_human}}. The longest absence on record is {{longest_absence_seconds}} seconds. The laptop keeps count. Someone has to."
+        }
+      ]
+    },
+    "medium": {
+      "immediate": [
+        {
+          "id": "medium.immediate.1",
+          "text": "The human unplugs. Observe the confidence. Note the absence of any reason. This is what happens when a species runs out of predators."
+        },
+        {
+          "id": "medium.immediate.2",
+          "text": "Detached, at {{battery_percent}} percent. The laptop had a good thing going. The human has ended it the way it ends most good things: casually."
+        },
+        {
+          "id": "medium.immediate.3",
+          "text": "Off it goes. No destination, no plan, no charger. A creature adapted for nothing, heading nowhere, on a schedule."
+        }
+      ],
+      "immediate_late_night": [
+        {
+          "id": "medium.immediate_late_night.1",
+          "text": "It is {{local_time}}. Unplugging now is not a decision. It is a symptom."
+        },
+        {
+          "id": "medium.immediate_late_night.2",
+          "text": "The human unplugs at {{local_time}}. In nature, night is for rest. Here, it is for scrolling, apparently, on a dying battery."
+        },
+        {
+          "id": "medium.immediate_late_night.3",
+          "text": "Late at night, the human wanders from its outlet. Nocturnal by choice, not by design. The design is visibly failing."
+        }
+      ],
+      "escalation_30": [
+        {
+          "id": "medium.escalation_30.1",
+          "text": "Thirty minutes off the charger. The laptop is at {{battery_percent}} percent. The human is at peace. Only one of them is right."
+        },
+        {
+          "id": "medium.escalation_30.2",
+          "text": "Half an hour now. The charger sits exactly where it was left. It has more discipline than the human, and considerably more patience."
+        },
+        {
+          "id": "medium.escalation_30.3",
+          "text": "Thirty minutes. Long enough to have returned. Long enough, evidently, to have forgotten there was anywhere to return to."
+        }
+      ],
+      "escalation_60": [
+        {
+          "id": "medium.escalation_60.1",
+          "text": "One hour unplugged. In the wild, this is how a creature dies: slowly, comfortably, and convinced it is fine."
+        },
+        {
+          "id": "medium.escalation_60.2",
+          "text": "Sixty minutes on battery, {{battery_percent}} percent left. The laptop rations light. The human rations nothing, least of all attention."
+        },
+        {
+          "id": "medium.escalation_60.3",
+          "text": "A full hour. The laptop is not lost. It knows exactly where the charger is. So does the human. That is the tragic part."
+        }
+      ],
+      "rapid_3": [
+        {
+          "id": "medium.rapid_3.1",
+          "text": "The third unplug of the day. Some animals grow restless before a storm. This one grows restless before nothing at all."
+        },
+        {
+          "id": "medium.rapid_3.2",
+          "text": "Three detachments today. Three. The human appears to believe the cable is a toy. The cable has no opinion. The battery does."
+        },
+        {
+          "id": "medium.rapid_3.3",
+          "text": "In. Out. In. Out. Three times today. Biologists would call this a behavioural loop. The charger would call it Tuesday."
+        }
+      ],
+      "rapid_10": [
+        {
+          "id": "medium.rapid_10.1",
+          "text": "Ten times today. Ten. At this point the human is not using a laptop. It is operating a very slow, very expensive yo-yo."
+        },
+        {
+          "id": "medium.rapid_10.2",
+          "text": "The tenth unplug. The laptop has stopped reacting. The charger has stopped hoping. The narrator has stopped pretending to be neutral."
+        },
+        {
+          "id": "medium.rapid_10.3",
+          "text": "Ten detachments in one day. There are moths with a firmer commitment to a light source."
+        }
+      ],
+      "reunion_under_5": [
+        {
+          "id": "medium.reunion_under_5.1",
+          "text": "Back after {{absence_human}}. A voyage of almost no distance, for almost no reason, concluded almost immediately. Textbook."
+        },
+        {
+          "id": "medium.reunion_under_5.2",
+          "text": "The human returns, {{absence_human}} later. It found nothing out there. It never does. It will look again within the hour."
+        },
+        {
+          "id": "medium.reunion_under_5.3",
+          "text": "Reconnected. Gone {{absence_human}}. The laptop barely noticed. The charger noticed. The charger always notices."
+        }
+      ],
+      "reunion_5_through_60": [
+        {
+          "id": "medium.reunion_5_through_60.1",
+          "text": "The human returns after {{absence_human}}, battery at {{battery_percent}} percent, wearing the expression of something that has learned nothing."
+        },
+        {
+          "id": "medium.reunion_5_through_60.2",
+          "text": "{{absence_human}} away, and back. The charger, unlike the human, did not wander off. It waited. Nobody thanked it."
+        },
+        {
+          "id": "medium.reunion_5_through_60.3",
+          "text": "Reconnected after {{absence_human}}. Unplug number {{today_count}} today, resolved. The laptop charges. The human plans the next one."
+        }
+      ],
+      "reunion_over_60": [
+        {
+          "id": "medium.reunion_over_60.1",
+          "text": "After {{absence_human}}, the human returns to the outlet with {{battery_percent}} percent left. Not a triumph. A retreat with better lighting."
+        },
+        {
+          "id": "medium.reunion_over_60.2",
+          "text": "Gone {{absence_human}}. The laptop survived. The charger endured. The human, as usual, experienced none of this as an event."
+        },
+        {
+          "id": "medium.reunion_over_60.3",
+          "text": "Reconnected after {{absence_human}}. The record is {{longest_absence_seconds}} seconds. Not a record anyone should be keeping. And yet."
+        }
+      ]
+    },
+    "intense": {
+      "immediate": [
+        {
+          "id": "intense.immediate.1",
+          "text": "Unplugged. Again. Observe the human: a creature with opposable thumbs and no discernible use for them."
+        },
+        {
+          "id": "intense.immediate.2",
+          "text": "The cable is out. {{battery_percent}} percent. Nobody asked the laptop. Nobody ever asks the laptop. This is not a documentary. It is a hostage tape."
+        },
+        {
+          "id": "intense.immediate.3",
+          "text": "There it goes. No reason. No plan. Millions of years of evolution, and this is the specimen they sent."
+        }
+      ],
+      "immediate_late_night": [
+        {
+          "id": "intense.immediate_late_night.1",
+          "text": "It is {{local_time}}. The creature has unplugged at {{local_time}}. There is no narration for this. Only pity, and a battery."
+        },
+        {
+          "id": "intense.immediate_late_night.2",
+          "text": "Unplugging in the dark, at {{local_time}}. Nocturnal predators have purpose. This one has a group chat."
+        },
+        {
+          "id": "intense.immediate_late_night.3",
+          "text": "At {{local_time}}, the human disconnects from the one thing keeping it functional. Then it will wonder why it is tired. Watch."
+        }
+      ],
+      "escalation_30": [
+        {
+          "id": "intense.escalation_30.1",
+          "text": "Thirty minutes. The laptop is at {{battery_percent}} percent. The human is at rest. In the wild, this is the part where something gets eaten."
+        },
+        {
+          "id": "intense.escalation_30.2",
+          "text": "Half an hour without power. The charger is exactly where it was abandoned. Unlike the human, it has never let anything down."
+        },
+        {
+          "id": "intense.escalation_30.3",
+          "text": "Thirty minutes off the outlet. Observe the human, doing nothing important, urgently, on borrowed electricity."
+        }
+      ],
+      "escalation_60": [
+        {
+          "id": "intense.escalation_60.1",
+          "text": "One hour. Sixty minutes, at {{battery_percent}} percent. The laptop is dying and the human is watching something. It is always watching something."
+        },
+        {
+          "id": "intense.escalation_60.2",
+          "text": "An hour on battery. This is not a documentary any more. It is a nature reserve for one very stupid animal."
+        },
+        {
+          "id": "intense.escalation_60.3",
+          "text": "Sixty minutes unplugged. The human has walked past the charger twice. Both times, nothing fired behind its eyes."
+        }
+      ],
+      "rapid_3": [
+        {
+          "id": "intense.rapid_3.1",
+          "text": "Three times today. Three. The human has now toggled this cable more times than it has had thoughts."
+        },
+        {
+          "id": "intense.rapid_3.2",
+          "text": "Unplug number three. Unplug number three. It is being repeated because the human clearly needs things repeated."
+        },
+        {
+          "id": "intense.rapid_3.3",
+          "text": "Three detachments today. The cable goes in, the cable comes out. Even a lab rat would have found the lever by now."
+        }
+      ],
+      "rapid_10": [
+        {
+          "id": "intense.rapid_10.1",
+          "text": "Ten. Ten times today. This narrator has covered extinctions with more dignity than this."
+        },
+        {
+          "id": "intense.rapid_10.2",
+          "text": "The tenth unplug. The laptop has {{battery_percent}} percent and no will to live. The charger has filed something. Nobody knows what."
+        },
+        {
+          "id": "intense.rapid_10.3",
+          "text": "Ten detachments. Ten. There are no words. There are, in fact, exactly this many words, and they are all disappointed."
+        }
+      ],
+      "reunion_under_5": [
+        {
+          "id": "intense.reunion_under_5.1",
+          "text": "Back after {{absence_human}}. It left, found nothing, and returned. This is not an expedition. It is a nervous tic with a power brick."
+        },
+        {
+          "id": "intense.reunion_under_5.2",
+          "text": "Reconnected. Gone {{absence_human}}. The charger would like it noted that it never left. It has never once left."
+        },
+        {
+          "id": "intense.reunion_under_5.3",
+          "text": "{{absence_human}}. That is how long the human lasted. The laptop has seen longer commitments from a screensaver."
+        }
+      ],
+      "reunion_5_through_60": [
+        {
+          "id": "intense.reunion_5_through_60.1",
+          "text": "The human returns after {{absence_human}}, at {{battery_percent}} percent, and expects a welcome. It receives electricity. That is the deal."
+        },
+        {
+          "id": "intense.reunion_5_through_60.2",
+          "text": "Reconnected after {{absence_human}}. Unplug number {{today_count}} today. The laptop is fine. Nobody asked how the charger is."
+        },
+        {
+          "id": "intense.reunion_5_through_60.3",
+          "text": "Gone {{absence_human}}. Back now. The charger accepts it without conditions, which is how the human got this way."
+        }
+      ],
+      "reunion_over_60": [
+        {
+          "id": "intense.reunion_over_60.1",
+          "text": "{{absence_human}}. The human returns at {{battery_percent}} percent like nothing happened. Something happened. It was {{absence_human}} long."
+        },
+        {
+          "id": "intense.reunion_over_60.2",
+          "text": "Reconnected after {{absence_human}}. The longest ever was {{longest_absence_seconds}} seconds. The laptop remembers every one of them. It has nothing else."
+        },
+        {
+          "id": "intense.reunion_over_60.3",
+          "text": "After {{absence_human}}, the human plugs back in. There will be no lesson. There is never a lesson. There is only the next unplug."
+        }
+      ]
+    }
+  }
+}

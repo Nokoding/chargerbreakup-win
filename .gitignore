@@ -1,3 +1,13 @@
+# --- chargerwin ---------------------------------------------------------
+# Secrets (API keys for the offline generation / TTS render scripts)
+.env
+.env.*
+!.env.example
+# Rendered audio cache and generation scratch output
+audio-cache/
+generated/
+# --- stock GitHub Python template below -----------------------------------
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +226,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- chargerwin (must come after the stock rules above) -------------------
+# Keep the PyInstaller spec once step 5 creates it; the stock *.spec rule
+# above would otherwise drop it.
+!chargerwin.spec
