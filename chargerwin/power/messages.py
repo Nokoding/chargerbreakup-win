@@ -34,8 +34,23 @@ PBT_APMPOWERSTATUSCHANGE = 0x000A
 PBT_APMRESUMEAUTOMATIC = 0x0012
 PBT_APMRESUMESUSPEND = 0x0007
 PBT_APMSUSPEND = 0x0004
+PBT_POWERSETTINGCHANGE = 0x8013
 
-HWND_MESSAGE = -3          # a message-only window: no UI, still gets messages
+# Window creation. NOT HWND_MESSAGE: a message-only window "does not receive
+# broadcast messages" (Microsoft's own wording), and WM_POWERBROADCAST is
+# broadcast to top-level windows. A message-only window registers fine, pumps
+# fine, and silently never receives a single power event. The window is
+# therefore an ordinary top-level window that is simply never shown.
+WS_OVERLAPPED = 0x00000000
+WS_EX_TOOLWINDOW = 0x00000080  # keeps it out of the taskbar and alt-tab
+
+# Targeted power notification, used alongside the broadcast. Delivery is to
+# this specific window rather than to every top-level window, so it does not
+# depend on broadcast eligibility at all.
+DEVICE_NOTIFY_WINDOW_HANDLE = 0x00000000
+# GUID_ACDC_POWER_SOURCE {5D3E9A59-E9D5-4B00-A6BD-FF34FF516548}: the system is
+# now running on AC, or on battery.
+GUID_ACDC_POWER_SOURCE = (0x5D3E9A59, 0xE9D5, 0x4B00, (0xA6, 0xBD, 0xFF, 0x34, 0xFF, 0x51, 0x65, 0x48))
 AC_OFFLINE, AC_ONLINE, AC_UNKNOWN = 0, 1, 255
 BATTERY_PERCENT_UNKNOWN = 255
 
@@ -83,7 +98,11 @@ def classify_message(message: int, wparam: int) -> PowerAction:
     """
     if message != WM_POWERBROADCAST:
         return PowerAction.IGNORE
-    if wparam == PBT_APMPOWERSTATUSCHANGE:
+    if wparam in (PBT_APMPOWERSTATUSCHANGE, PBT_POWERSETTINGCHANGE):
+        # Two independent delivery routes to the same conclusion: go and read
+        # the status. Receiving both for one cable pull is harmless, because
+        # State.observe diffs against the last known status and the second
+        # reading is simply no change.
         return PowerAction.READ_STATUS
     if wparam in (PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND):
         return PowerAction.RESYNC

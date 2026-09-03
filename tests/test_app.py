@@ -258,3 +258,38 @@ def test_concurrent_events_do_not_corrupt_the_counters(app):
         t.join()
     assert errors == []
     assert app.state.today_count == app.state_store.load().today_count
+
+
+def test_reaction_observer_sees_events(app):
+    """--watch prints through this. Without it the only evidence an event was
+    handled is a sound, which is no help when diagnosing silence."""
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    seen = []
+    app.on_reaction = lambda reaction, name: seen.append((name, reaction is not None))
+    app.warm_cache()
+    app.resync(plugged=True)
+    app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(False, 50))
+    assert seen == [("Disconnected", True)]
+
+
+def test_observer_is_not_called_when_nothing_happened(app):
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    seen = []
+    app.on_reaction = lambda reaction, name: seen.append(name)
+    app.resync(plugged=False)
+    app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(False, 50))
+    assert seen == []
+
+
+def test_a_failing_observer_does_not_break_the_event_path(app):
+    def boom(reaction, name):
+        raise RuntimeError("bad printer")
+
+    app.on_reaction = boom
+    app.warm_cache()
+    app.resync(plugged=True)
+    assert app.on_power_status(plugged=False) is not None  # event still handled

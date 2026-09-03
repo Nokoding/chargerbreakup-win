@@ -32,7 +32,7 @@ Decided during planning. Do not re-open without being asked.
 
 | Area | Decision |
 |---|---|
-| Event detection | Hidden message-only window, `WM_POWERBROADCAST` (0x218) + `PBT_APMPOWERSTATUSCHANGE` (0xA), then `GetSystemPowerStatus` for state. Event driven, never poll. |
+| Event detection | Hidden **top-level** window (never shown), `WM_POWERBROADCAST` (0x218) + `PBT_APMPOWERSTATUSCHANGE` (0xA), plus a targeted `RegisterPowerSettingNotification` on `GUID_ACDC_POWER_SOURCE` (`PBT_POWERSETTINGCHANGE`, 0x8013). Then `GetSystemPowerStatus` for state. Event driven, never poll. **Not a message-only window**: those do not receive broadcast messages, and this one is a broadcast. Corrected 2026-09-03 after it failed on hardware. |
 | State comparison | Always diff against last known AC status. The message also fires on battery-percentage changes, so not every message is a plug event. |
 | Windows API binding | `ctypes`, not `pywin32`. `pywin32` cannot install in the Linux dev environment, so depending on it would make the whole module unimportable here rather than just unverifiable. |
 | Escalation cadence | Fires at **30 and 60 minutes** unplugged. 10 was tried and cut; see `RESEARCH.md` before re-adding it. Any firing threshold must have its group in `REQUIRED_GROUPS`, or the escalation is silent. |
@@ -161,7 +161,7 @@ exclude it from the next draw when the group has more than one candidate.
 3. [done] State machine and line selector, with tests
 4. [done] `--simulate plug|unplug` and CLI entry point
 5. [done] Tray icon and audio playback
-6. [done, unverified] Windows power hook
+6. [done, fix unverified] Windows power hook
 7. TTS render script (partly done: SAPI renders the cache; better engines
    are a new `Renderer` with a different `key`)
 8. Batch line generation script
@@ -171,61 +171,70 @@ confirmed working on Windows hardware.
 
 ### Current position (2026-09-03)
 
-Steps 1-6 built, 315 tests. **Step 5 verified end to end on Windows**: icon
-appears, menu opens, intensity selection updates, quit exits cleanly.
+Steps 1-6 built, 321 tests. Steps 1-5 verified on Windows.
 
-Step 6 is written but **unverified**. New pieces:
+**Step 6 failed on hardware and has been fixed; the fix is unverified.**
+`--watch` started cleanly, registered a valid hwnd and pumped messages, but
+pulling the charger produced nothing at all. Two causes, both now addressed:
 
-| Module | Role |
-|---|---|
-| `power/messages.py` | Win32 constants, `decode_power_status`, `classify_message`. No ctypes, so it imports and tests anywhere. |
-| `power/windows.py` | `WindowsPowerSource` (GetSystemPowerStatus) and `PowerWatcher` (message-only window). Windows only. |
-| `ticker.py` | `EscalationTicker`: a thread that asks the state whether 30 or 60 minutes have passed. |
-| `App.handle_power_action` | Routes a classified message plus a fresh reading into the state. |
+1. **The window was message-only** (`HWND_MESSAGE` as parent). Microsoft's
+   documentation: such a window "does not receive broadcast messages".
+   `WM_POWERBROADCAST` is broadcast to top-level windows, so the window was
+   never eligible for the one message it existed for. It registered, pumped
+   and reported success the whole time. It is now an ordinary top-level
+   window that is simply never shown (`WS_EX_TOOLWINDOW`, no `ShowWindow`).
+2. **`--watch` printed nothing per event**, so a working hook and a dead one
+   looked identical unless audio happened to play. `App.on_reaction` is now
+   an observer that `--watch` prints through, and every `WM_POWERBROADCAST`
+   is logged with its wparam *before* classification, so "message arrived
+   but was not understood" is distinguishable from "no message".
 
-New CLI: `--watch` (power hook, no tray, prints events) and `--tick-seconds`.
+Also added: `RegisterPowerSettingNotification` on `GUID_ACDC_POWER_SOURCE`,
+a second delivery route addressed to this window specifically rather than
+broadcast to all of them. Both routes mean READ_STATUS, and `State.observe`
+diffs, so receiving both for one cable pull costs nothing. Belt and braces
+is worth it here: each round trip to the laptop is slow.
 
-**Verify on the laptop like this.** `--watch` is the smallest thing that
-proves the hook, with no tray in the way:
+**Verify like this:**
 
 ```
 python -m chargerwin --watch --tick-seconds 10 -v
 ```
 
-Then pull the cable and put it back. Expect a line each way, and an
-escalation at 30 minutes if left unplugged. Then `--tray` for the whole
-thing together. Worth also testing sleep and resume: resume should adopt
-the new state silently, never announce it.
+Pull the cable and put it back. Expect `DEBUG ... WM_POWERBROADCAST
+wparam=0x000A` (and/or `0x8013`) followed by a printed line each way. If
+the DEBUG line appears but no line follows, the problem is classification or
+state; if no DEBUG line appears at all, the window still is not receiving
+broadcasts.
 
 Decisions made during step 6:
 
 - **The pure decisions live in `power/messages.py`, away from ctypes.**
   `ctypes.WINFUNCTYPE` does not exist off Windows, so anything importing it
-  cannot even be imported here, let alone tested. Splitting them means the
-  part with branching is tested and the untestable part is a thin adapter.
+  cannot even be imported here, let alone tested.
 - **Every Win32 function is explicitly prototyped** (`_declare`). An
   unprototyped ctypes function defaults to `restype = c_int`, 32 bits, so
   `CreateWindowExW` and `GetModuleHandleW` would truncate the pointers they
-  return on 64-bit Windows. Found by inspection, since no Linux test can
-  reach it.
-- **The WNDPROC is kept alive on the instance.** If that reference is
-  dropped, ctypes frees the trampoline and Windows calls into freed memory
-  on the next message.
+  return on 64-bit Windows.
+- **The WNDPROC is kept alive on the instance.** Dropping that reference
+  lets ctypes free the trampoline while Windows still holds the pointer.
 - **Resume is a resync, not an event.** The cable may have moved while the
   machine slept; announcing a disconnect whose timing is unknown is worse
   than adopting the state silently.
-- **ACLineStatus 255 is ignored, never guessed.** Treating unknown as
-  unplugged would invent a disconnect.
+- **ACLineStatus 255 is ignored, never guessed.**
 - **The watcher runs its own thread with its own message loop**, because
   pystray owns the main thread and window messages are delivered per
-  thread. `App` takes an `RLock` around every state transition, since the
-  watcher and ticker threads both mutate what the tray thread reads.
+  thread. `App` takes an `RLock` around every state transition.
 - **The ticker polls the clock, not the power state.** Nothing broadcasts
-  "thirty minutes have passed". The power state itself is still purely
-  event driven, which is what the settled decision requires.
+  "thirty minutes have passed".
 
-Next action: verify step 6 on the laptop, then step 7 (a better TTS engine)
-or step 8 (batch line generation). Neither is blocked by the other.
+Lesson worth keeping: the step 6 failure was silent because every
+observable signal said success. A component that cannot be tested here must
+log enough to tell "working" from "never invoked", or the first hardware run
+produces no information beyond "no".
+
+Next action: verify the power hook on the laptop, then step 7 (a better TTS
+engine) or step 8 (batch line generation). Neither is blocked by the other.
 
 ## Secrets
 

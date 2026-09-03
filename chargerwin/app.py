@@ -20,6 +20,7 @@ import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .audio import Player, select_player
 from .packs import Pack, find_pack
@@ -66,6 +67,7 @@ class App:
         pack: Pack | None = None,
         player: Player | None = None,
         rng: random.Random | None = None,
+        on_reaction: Callable[["Reaction | None", str], None] | None = None,
     ):
         self.state_dir = Path(state_dir) if state_dir else default_state_dir()
         self.settings_store = SettingsStore(self.state_dir)
@@ -89,6 +91,10 @@ class App:
         self._lock = threading.RLock()
         self._watcher = None
         self._ticker = None
+        # Observer for anything that wants to see events as they happen.
+        # --watch prints through this; without it the only evidence an event
+        # was handled is a sound, which is useless for diagnosing silence.
+        self.on_reaction = on_reaction
 
     # ----- event path ----------------------------------------------------
 
@@ -139,6 +145,7 @@ class App:
         """
         from .power.messages import PowerAction
 
+        log.debug("power action %s, status %s", getattr(action, "name", action), status)
         if status.plugged is None:
             # Windows reports ACLineStatus 255. Guessing would invent an event.
             log.debug("AC status unknown; ignoring this message")
@@ -186,7 +193,16 @@ class App:
         # Playback is outside the lock: it is fire-and-forget, and holding a
         # lock across it would serialise events behind the audio stack.
         self.speaker.speak(reaction)
+        self._notify(reaction, type(event).__name__)
         return reaction
+
+    def _notify(self, reaction: Reaction | None, event_name: str) -> None:
+        if self.on_reaction is None:
+            return
+        try:
+            self.on_reaction(reaction, event_name)
+        except Exception:
+            log.warning("reaction observer failed", exc_info=True)
 
     # ----- menu ----------------------------------------------------------
 

@@ -164,6 +164,19 @@ def run_watch(args) -> int:
     import time
 
     app = build_app(args)
+
+    def report(reaction, event_name: str) -> None:
+        now = parse_now(None)
+        stamp = now.strftime("%H:%M:%S")
+        if reaction is None:
+            print(f"[{stamp}] {event_name}: no line (silent)")
+        else:
+            sel = reaction.selection
+            print(f"[{stamp}] {event_name} -> {sel.intensity}/{sel.group} [{sel.line.id}]")
+            print(f"          {reaction.text}")
+        print(f"          {describe(app.state, now)}")
+
+    app.on_reaction = report
     if not app.start_power_watch(interval=args.tick_seconds):
         print("power hook unavailable here (Windows only).", file=sys.stderr)
         return 1

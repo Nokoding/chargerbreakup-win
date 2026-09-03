@@ -83,3 +83,45 @@ def test_psutil_status_survives_a_raising_psutil(monkeypatch):
 
     monkeypatch.setitem(__import__("sys").modules, "psutil", Boom)
     assert messages.psutil_status().plugged is None
+
+
+def test_power_setting_change_also_reads_the_status():
+    """The second delivery route. RegisterPowerSettingNotification sends
+    PBT_POWERSETTINGCHANGE to one specific window, which does not depend on
+    broadcast eligibility the way PBT_APMPOWERSTATUSCHANGE does."""
+    from chargerwin.power.messages import PBT_POWERSETTINGCHANGE
+
+    assert classify_message(WM_POWERBROADCAST, PBT_POWERSETTINGCHANGE) is PowerAction.READ_STATUS
+
+
+def test_the_window_is_not_message_only():
+    """Regression for the step 6 failure. A message-only window (HWND_MESSAGE
+    as parent) registers and pumps happily but never receives a broadcast, and
+    WM_POWERBROADCAST is a broadcast, so the app sat silent through every
+    cable pull. The window must be an ordinary hidden top-level one.
+
+    Read as text, not imported: windows.py needs ctypes.WINFUNCTYPE and cannot
+    be imported off Windows. A source assertion is weak, but the alternative
+    here is no check at all until someone is standing at the laptop.
+    """
+    from pathlib import Path
+
+    import chargerwin.power as power
+
+    source = (Path(power.__file__).parent / "windows.py").read_text(encoding="utf-8")
+    creation = source[source.index("CreateWindowExW("):]
+    assert "HWND_MESSAGE" not in creation
+    assert "WS_EX_TOOLWINDOW" in creation
+    assert "RegisterPowerSettingNotification" in source
+
+
+def test_duplicate_delivery_is_harmless_by_design():
+    """Both routes can fire for one cable pull. They both mean READ_STATUS,
+    and State.observe turns the second reading into no change."""
+    from chargerwin.power.messages import PBT_POWERSETTINGCHANGE
+
+    actions = {
+        classify_message(WM_POWERBROADCAST, PBT_APMPOWERSTATUSCHANGE),
+        classify_message(WM_POWERBROADCAST, PBT_POWERSETTINGCHANGE),
+    }
+    assert actions == {PowerAction.READ_STATUS}

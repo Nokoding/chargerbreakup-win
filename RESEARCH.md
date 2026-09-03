@@ -125,10 +125,23 @@ is a plug event. This is the classic bug in every naive implementation of
 this and there are forum posts going back over a decade making exactly that
 mistake.
 
-Implementation shape: register a hidden message-only window and pump
-messages. Event driven, no polling. In Python that is `pywin32` or raw
-`ctypes`. `psutil.sensors_battery()` supplies percent and `power_plugged`
-for the template variables.
+Implementation shape: register a hidden window and pump messages. Event
+driven, no polling. In Python that is `pywin32` or raw `ctypes`.
+
+**Not a message-only window.** The obvious shape for an invisible listener
+is `HWND_MESSAGE` as the parent, and it is wrong here: Microsoft documents
+that a message-only window "does not receive broadcast messages", and
+`WM_POWERBROADCAST` is broadcast to top-level windows. Tried on hardware
+2026-09-03: the window registered, returned a valid hwnd, pumped messages
+and received nothing through repeated cable pulls. Use an ordinary
+top-level window that is never shown.
+
+`RegisterPowerSettingNotification` with `GUID_ACDC_POWER_SOURCE` is the
+belt-and-braces addition: it delivers `PBT_POWERSETTINGCHANGE` to one
+specific window rather than broadcasting, so it does not depend on
+broadcast eligibility at all. Both routes lead to the same
+`GetSystemPowerStatus` read, and diffing against the last known status
+makes duplicate delivery a no-op.
 
 Windows has no built-in system sound for charger connect or disconnect and
 no registry setting to enable one. Multiple Microsoft support threads

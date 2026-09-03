@@ -19,9 +19,13 @@ from typing import Callable
 
 from . import PowerStatus
 from .messages import (
-    HWND_MESSAGE,
+    DEVICE_NOTIFY_WINDOW_HANDLE,
+    GUID_ACDC_POWER_SOURCE,
     WM_CLOSE,
     WM_DESTROY,
+    WM_POWERBROADCAST,
+    WS_EX_TOOLWINDOW,
+    WS_OVERLAPPED,
     PowerAction,
     classify_message,
     decode_power_status,
@@ -78,6 +82,20 @@ WNDPROC = ctypes.WINFUNCTYPE(
 )
 
 
+class GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", ctypes.c_ulong),
+        ("Data2", ctypes.c_ushort),
+        ("Data3", ctypes.c_ushort),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+    @classmethod
+    def from_parts(cls, parts) -> "GUID":
+        d1, d2, d3, d4 = parts
+        return cls(d1, d2, d3, (ctypes.c_ubyte * 8)(*d4))
+
+
 class WNDCLASSW(ctypes.Structure):
     _fields_ = [
         ("style", wintypes.UINT),
@@ -131,6 +149,12 @@ def _declare(user32, kernel32) -> None:
     user32.PostQuitMessage.argtypes = [ctypes.c_int]
     kernel32.GetModuleHandleW.restype = wintypes.HMODULE
     kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    user32.RegisterPowerSettingNotification.restype = wintypes.HANDLE
+    user32.RegisterPowerSettingNotification.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(GUID), wintypes.DWORD
+    ]
+    user32.UnregisterPowerSettingNotification.restype = wintypes.BOOL
+    user32.UnregisterPowerSettingNotification.argtypes = [wintypes.HANDLE]
 
 
 class PowerWatcher:
@@ -156,6 +180,7 @@ class PowerWatcher:
         # next time a message arrives.
         self._wndproc: WNDPROC | None = None
         self._user32 = None
+        self._power_notify = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="chargerwin-power", daemon=True)
@@ -167,9 +192,17 @@ class PowerWatcher:
         """Ask the message loop to quit. Safe to call from another thread:
         PostMessageW is the documented way to reach a loop you do not own."""
         if self._hwnd and self._user32 is not None:
+            if self._power_notify:
+                self._user32.UnregisterPowerSettingNotification(self._power_notify)
+                self._power_notify = None
             self._user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
 
     def _handle(self, hwnd, message, wparam, lparam, user32):
+        if message == WM_POWERBROADCAST:
+            # Logged before classification, so a message that arrives but is
+            # not understood looks different from no message at all. Not having
+            # this is why the message-only window failed silently.
+            log.debug("WM_POWERBROADCAST wparam=0x%04X", wparam)
         action = classify_message(message, wparam)
         if action is not PowerAction.IGNORE:
             try:
@@ -207,16 +240,34 @@ class PowerWatcher:
                 self._ready.set()
                 return
 
+        # A top-level window with a null parent, never shown. NOT a
+        # message-only window: those do not receive broadcast messages, and
+        # WM_POWERBROADCAST is a broadcast. See messages.py.
         self._hwnd = user32.CreateWindowExW(
-            0, self.CLASS_NAME, self.CLASS_NAME, 0, 0, 0, 0, 0,
-            wintypes.HWND(HWND_MESSAGE), None, wndclass.hInstance, None,
+            WS_EX_TOOLWINDOW, self.CLASS_NAME, self.CLASS_NAME, WS_OVERLAPPED,
+            0, 0, 0, 0, None, None, wndclass.hInstance, None,
         )
         if not self._hwnd:
             log.error("CreateWindowExW failed (error %s); no power events", ctypes.get_last_error())
             self._ready.set()
             return
 
-        log.debug("power watcher listening on hwnd %s", self._hwnd)
+        # Second, independent delivery route: a notification addressed to this
+        # window rather than broadcast to all of them. If the broadcast is ever
+        # missed, this still arrives.
+        guid = GUID.from_parts(GUID_ACDC_POWER_SOURCE)
+        self._power_notify = user32.RegisterPowerSettingNotification(
+            self._hwnd, ctypes.byref(guid), DEVICE_NOTIFY_WINDOW_HANDLE
+        )
+        if not self._power_notify:
+            log.warning(
+                "RegisterPowerSettingNotification failed (error %s); relying on the broadcast alone",
+                ctypes.get_last_error(),
+            )
+        else:
+            log.debug("registered for GUID_ACDC_POWER_SOURCE notifications")
+
+        log.debug("power watcher listening on hwnd %s (top-level, hidden)", self._hwnd)
         self._ready.set()
 
         msg = wintypes.MSG()
