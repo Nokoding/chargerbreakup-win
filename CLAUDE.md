@@ -112,19 +112,36 @@ Time windows: late night 22:00-04:59, morning 05:00-11:59, afternoon
 
 Decided, implement as specified.
 
-**Empty group fallback.** Walk a defined chain, never crash, never go
-silent. Specific to general:
+**Empty group fallback.** Walk a defined chain, never crash. The whole
+chain is tried at the current intensity before dropping an intensity:
 
-1. Exact group for the current state
-2. The base group in that family (`escalation_60` falls back to
-   `escalation_30`, then `immediate`; `rapid_10` to `rapid_3`, then
-   `immediate`; any `reunion_*` to `reunion_under_5`)
-3. Plain `immediate` for disconnects, `reunion_under_5` for reconnects
-4. Same group at a lower intensity in the same pack
-5. Log a warning and say nothing
+1. Every group in the chain for the current state, nearest first
+2. The same chain at each lower intensity in turn
+3. Log a warning and say nothing
 
-Rule 5 matters: silence beats a wrong-tone line. A validator should catch
-empty required groups at load time so rule 5 never fires in practice.
+The chains, as implemented in `selector.fallback_chain`:
+
+| Requested | Chain |
+|---|---|
+| `immediate`, `immediate_<tod>` | the merged immediate pool (see below) |
+| `escalation_N` | every lower escalation, descending. **Stops there.** |
+| `rapid_N` | every lower rapid, descending, then the immediate pool |
+| `reunion_X` | every shorter reunion, descending |
+| `rapid_reunion` | itself, then the duration-keyed reunion chain |
+| battery groups | itself only |
+
+**Escalations deliberately never reach `immediate`.** Planning specified
+that they should; implementing it made the flaw obvious. An "oh, you
+unplugged" line is wrong an hour into an absence, and wrong in a way the
+user notices, because they know how long it has been. Rapid groups do fall
+back to `immediate`, which is correct: a rapid group is still the moment
+of a disconnect.
+
+Rule 3 matters: silence beats a wrong-tone line. The validator catches
+empty *required* groups at load time, so for those it never fires. It can
+still fire for a non-required group whose chain dead-ends, which is a
+content bug, not a selector bug. See the `escalation_10` gap under Current
+position.
 
 **Time of day merges, does not override.** Candidates for a disconnect are
 `immediate` plus the matching `immediate_<timeofday>` in one pool, with
@@ -174,6 +191,20 @@ python -m chargerwin --simulate plug   --state-dir %TEMP%\cw
 That confirms the core is sound on the target OS without needing the power
 hook to exist yet. Step 5 unlocks once it passes.
 
+**Known bug: the 10-minute escalation is silent.**
+`groups.ESCALATION_MINUTES` fires at 10, 30 and 60 minutes, but
+`escalation_10` is not in `REQUIRED_GROUPS`, is not populated in
+`field_notes.json`, and the escalation chain does not fall through to
+`immediate`. So the first escalation a user hears after unplugging is
+nothing at all, with a warning in the log. Reproduce with
+`--simulate unplug` then `--simulate tick --now <+12min>`.
+
+Two ways out, both needing a call: populate `escalation_10` and add it to
+`REQUIRED_GROUPS` (9 lines, keeps the documented 10/30/60 cadence), or drop
+10 from `ESCALATION_MINUTES` and escalate only at 30 and 60. Do not fix it
+by letting escalations fall back to `immediate`; that is the thing the
+selector section rules out.
+
 Decisions made during the build that are not obvious from the code:
 
 - `--simulate` gained a third mode, `tick`, which fires whatever escalation
@@ -183,11 +214,8 @@ Decisions made during the build that are not obvious from the code:
   (`variables.WORST_CASE`), not raw source text. A line that fits until
   `{{absence_human}}` expands is a bug that only shows up in front of a
   user.
-- Escalation groups never fall back to `immediate`. The general fallback
-  chain in this file allows it; in practice a "you just unplugged" line is
-  the wrong tone an hour in, so escalations stop at the lowest populated
-  escalation. Rapid groups still fall back to `immediate`, which is right,
-  because a rapid group is still a disconnect moment.
+- Escalation groups never fall back to `immediate`; the selector semantics
+  section above now specifies this rather than contradicting it.
 - A disconnect within 10 minutes of the previous one extends the toggle
   streak (`state.STREAK_WINDOW_SECONDS`); a streak of 3+ routes a reconnect
   to `rapid_reunion`. Planning never fixed these numbers.
