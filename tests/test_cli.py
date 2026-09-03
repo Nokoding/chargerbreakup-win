@@ -224,3 +224,16 @@ def test_tray_reports_an_unavailable_tray_legibly(run, state_dir):
     assert "tray unavailable" in err
     assert "--simulate" in out
 
+
+
+def test_watch_reports_an_unavailable_hook(run, state_dir):
+    """Windows only; off Windows it must exit 1 with a reason, not a traceback."""
+    code, out, err = run("--watch", "--engine", "fake", "--state-dir", state_dir)
+    assert code == 1 and "Windows only" in err
+
+
+def test_tick_seconds_is_configurable(run):
+    from chargerwin.cli import build_parser
+
+    assert build_parser().parse_args(["--watch", "--tick-seconds", "5"]).tick_seconds == 5.0
+    assert build_parser().parse_args(["--watch"]).tick_seconds == 60.0

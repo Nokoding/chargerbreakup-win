@@ -5,11 +5,10 @@ unplugged, escalating the longer you stay unplugged and the more times you
 toggle the cable in a day. A Windows take on the idea behind the macOS app
 Charger Breakup, with its own packs and lines.
 
-Status: core pipeline, tray icon, audio playback and a pre-rendered speech
-cache are built. The core is verified on Windows; the tray and real SAPI
-rendering are not yet. The Windows power hook (step 6) is still to come, so
-nothing fires automatically yet -- drive it with `--simulate`. See
-`CLAUDE.md` for the plan.
+Status: core pipeline, tray icon, audio playback, a pre-rendered speech
+cache and the Windows power hook are built. Everything through the tray is
+verified on Windows; the power hook itself is written but not yet verified
+on hardware. See `CLAUDE.md` for the plan.
 
 ## Dev loop (no hardware needed)
 
@@ -37,6 +36,7 @@ python -m chargerwin --warm                 # render missing lines (Windows SAPI
 python -m chargerwin --warm --engine fake   # silent wavs, for Linux dev
 python -m chargerwin --simulate unplug --play
 python -m chargerwin --tray                 # tray icon; Windows
+python -m chargerwin --watch                # power events only, no tray; Windows
 ```
 
 The cache lives at `<state-dir>/audio-cache/<pack>/<engine>/<line-id>.wav`.

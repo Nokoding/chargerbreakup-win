@@ -138,3 +138,123 @@ def test_warm_cache_only_renders_the_active_intensity(app):
 def test_app_defaults_to_a_real_player_off_windows(tmp_path, sample_pack):
     a = App(state_dir=tmp_path, cache_dir=tmp_path / "c", pack=sample_pack)
     assert isinstance(a.speaker.player, NullPlayer)
+
+
+# ----- step 6: power hook routing ---------------------------------------
+
+
+def test_power_hook_is_unavailable_off_windows(app):
+    """Must degrade, not refuse to start: the tray and Say something still
+    work without automatic events."""
+    assert app.start_power_watch() is False
+
+
+def test_read_status_drives_the_normal_event_path(app):
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    app.warm_cache()
+    app.resync(plugged=True)
+    reaction = app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(False, 55))
+    assert reaction is not None
+    assert app.state.today_count == 1
+    assert reaction.values["battery_percent"] == "55"
+
+
+def test_read_status_with_no_change_says_nothing(app):
+    """WM_POWERBROADCAST also fires on battery-percentage changes, so most
+    messages are not plug events."""
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    app.warm_cache()
+    app.resync(plugged=False)
+    assert app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(False, 40)) is None
+    assert app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(False, 39)) is None
+    assert app.state.today_count == 0
+
+
+def test_resume_adopts_without_speaking(app):
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    app.warm_cache()
+    app.resync(plugged=True)
+    assert app.handle_power_action(PowerAction.RESYNC, PowerStatus(False, 30)) is None
+    assert app.state.connected is False
+    assert app.state.today_count == 0  # unplugged while asleep is not a disconnect
+    assert app.speaker.player.played == []
+
+
+def test_unknown_ac_status_is_ignored_entirely(app):
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    app.resync(plugged=True)
+    assert app.handle_power_action(PowerAction.READ_STATUS, PowerStatus(None, 50)) is None
+    assert app.state.connected is True
+
+
+def test_ignore_action_does_nothing(app):
+    from chargerwin.power import PowerStatus
+    from chargerwin.power.messages import PowerAction
+
+    app.resync(plugged=True)
+    assert app.handle_power_action(PowerAction.IGNORE, PowerStatus(False, 50)) is None
+    assert app.state.connected is True
+
+
+def test_quit_stops_the_watcher_and_ticker(app):
+    stopped = []
+
+    class Stub:
+        def stop(self):
+            stopped.append(type(self).__name__)
+
+    app._watcher = Stub()
+    app._ticker = Stub()
+    app.quit()
+    assert len(stopped) == 2
+    assert app._watcher is None and app._ticker is None
+
+
+def test_stop_power_watch_survives_a_failing_component(app):
+    class Boom:
+        def stop(self):
+            raise RuntimeError("already gone")
+
+    app._watcher = Boom()
+    app.stop_power_watch()  # must not raise
+    assert app._watcher is None
+
+
+def test_concurrent_events_do_not_corrupt_the_counters(app):
+    """The watcher thread and the ticker thread both mutate state while the
+    tray thread reads it for the menu."""
+    import threading
+
+    app.warm_cache()
+    app.resync(plugged=True)
+    errors = []
+
+    def toggle(n):
+        try:
+            for i in range(n):
+                app.on_power_status(plugged=bool(i % 2))
+        except Exception as exc:  # pragma: no cover - the thing being ruled out
+            errors.append(exc)
+
+    def read_menu():
+        try:
+            for _ in range(50):
+                app.menu()
+        except Exception as exc:  # pragma: no cover
+            errors.append(exc)
+
+    threads = [threading.Thread(target=toggle, args=(20,)), threading.Thread(target=read_menu)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert app.state.today_count == app.state_store.load().today_count

@@ -50,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the tray app (Windows; elsewhere the icon needs a display and audio stays silent)",
     )
     action.add_argument(
+        "--watch",
+        action="store_true",
+        help="listen for real power events and print them, without a tray icon. Windows only; "
+        "the quickest way to check the power hook on its own.",
+    )
+    action.add_argument(
         "--warm",
         action="store_true",
         help="render missing audio into the cache and exit. Safe to re-run: only missing lines cost anything.",
@@ -75,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="tts engine used to render: 'sapi' (Windows default) or 'fake' (silent wavs, for dev)",
     )
     audio.add_argument("--force", action="store_true", help="with --warm, re-render lines that are already cached")
+    sim.add_argument(
+        "--tick-seconds",
+        type=float,
+        default=60.0,
+        help="how often to check for a due escalation while unplugged (default: 60)",
+    )
     audio.add_argument(
         "--play",
         action="store_true",
@@ -102,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_validate(args.validate)
     if args.warm:
         return run_warm(args)
+    if args.watch:
+        return run_watch(args)
     if args.tray:
         return run_tray(args)
     if args.simulate:
@@ -145,17 +159,41 @@ def run_warm(args) -> int:
     return 0
 
 
+def run_watch(args) -> int:
+    """The power hook with no tray: the smallest thing that proves step 6."""
+    import time
+
+    app = build_app(args)
+    if not app.start_power_watch(interval=args.tick_seconds):
+        print("power hook unavailable here (Windows only).", file=sys.stderr)
+        return 1
+    print(f"listening for power events; ticking every {args.tick_seconds:g}s. Ctrl-C to quit.")
+    print(f"[start] {describe(app.state, parse_now(None))}")
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        app.stop_power_watch()
+        print("\nstopped.")
+    return 0
+
+
 def run_tray(args) -> int:
     app = build_app(args)
     missing = app.speaker.cache.warm(app.pack, [app.settings.intensity])
     if missing:
         print(f"rendered {missing} missing line(s)")
+    if app.start_power_watch(interval=args.tick_seconds):
+        print("power hook listening.")
+    else:
+        print("power hook unavailable; the tray still works but nothing fires automatically.")
     print(f"chargerwin tray: {app.pack.id} at {app.settings.intensity}. Ctrl-C to quit.")
     try:
         app.tray.run()
     except KeyboardInterrupt:
         app.quit()
     except Exception as exc:
+        app.stop_power_watch()
         # Not just ImportError: pystray picks a backend at import time, so on a
         # machine where it is installed but there is no display it raises the
         # backend's own error (Xlib.error.DisplayNameError on Linux). Catching

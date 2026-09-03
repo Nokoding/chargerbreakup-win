@@ -36,7 +36,7 @@ Decided during planning. Do not re-open without being asked.
 | State comparison | Always diff against last known AC status. The message also fires on battery-percentage changes, so not every message is a plug event. |
 | Windows API binding | `ctypes`, not `pywin32`. `pywin32` cannot install in the Linux dev environment, so depending on it would make the whole module unimportable here rather than just unverifiable. |
 | Escalation cadence | Fires at **30 and 60 minutes** unplugged. 10 was tried and cut; see `RESEARCH.md` before re-adding it. Any firing threshold must have its group in `REQUIRED_GROUPS`, or the escalation is silent. |
-| Battery data | `psutil.sensors_battery()` for percent and `power_plugged` |
+| Battery data | `GetSystemPowerStatus` supplies percent and AC status together, in the call the power message already requires. `psutil.sensors_battery()` is the fallback when it reports unknown. Two reads could disagree; one cannot. |
 | Tray | `pystray` |
 | Packaging | PyInstaller, single exe |
 | TTS at runtime | None. Lines pre-rendered to wav, cached on disk, keyed by line id **and engine**. The engine is in the cache path so replacing the placeholder voice is a cache miss, not stale audio. |
@@ -161,7 +161,7 @@ exclude it from the next draw when the group has more than one candidate.
 3. [done] State machine and line selector, with tests
 4. [done] `--simulate plug|unplug` and CLI entry point
 5. [done] Tray icon and audio playback
-6. Windows power hook (unverifiable here, keep thin)
+6. [done, unverified] Windows power hook
 7. TTS render script (partly done: SAPI renders the cache; better engines
    are a new `Renderer` with a different `key`)
 8. Batch line generation script
@@ -171,88 +171,61 @@ confirmed working on Windows hardware.
 
 ### Current position (2026-09-03)
 
-Steps 1-5 built, 273 tests. **Windows gate cleared 2026-09-03**: all six
-verification commands passed on the MSI, including the `escalation_10` fix
-and `reunion_5_through_60` routing.
+Steps 1-6 built, 315 tests. **Step 5 verified end to end on Windows**: icon
+appears, menu opens, intensity selection updates, quit exits cleanly.
 
-Step 5 shipped tray, audio playback, the wav cache and a SAPI renderer:
+Step 6 is written but **unverified**. New pieces:
 
 | Module | Role |
 |---|---|
-| `audio.py` | `Player` protocol, `NullPlayer`, `WinsoundPlayer` (async, interrupting) |
-| `voice.py` | `VoiceCache` plus `Renderer` protocol, `Pyttsx3Renderer`, `FakeRenderer` |
-| `settings.py` | User prefs in `settings.json`, separate from the counters |
-| `tray.py` | Menu as plain data (`build_menu`), thin pystray shell |
-| `app.py` | `Speaker` and `App`: wires state, pack, cache, player and tray |
+| `power/messages.py` | Win32 constants, `decode_power_status`, `classify_message`. No ctypes, so it imports and tests anywhere. |
+| `power/windows.py` | `WindowsPowerSource` (GetSystemPowerStatus) and `PowerWatcher` (message-only window). Windows only. |
+| `ticker.py` | `EscalationTicker`: a thread that asks the state whether 30 or 60 minutes have passed. |
+| `App.handle_power_action` | Routes a classified message plus a fresh reading into the state. |
 
-New CLI: `--tray`, `--warm [--force]`, `--engine sapi|fake`, `--cache-dir`,
-and `--play` on `--simulate`.
+New CLI: `--watch` (power hook, no tray, prints events) and `--tick-seconds`.
 
-Next action: **step 6, the Windows power hook.** `App.on_power_status` and
-`App.resync` are the only entry points it needs; it should call them and
-own nothing else. `App.on_tick` needs a timer while unplugged for the 30
-and 60 minute escalations.
+**Verify on the laptop like this.** `--watch` is the smallest thing that
+proves the hook, with no tray in the way:
 
-Decisions made during step 5:
+```
+python -m chargerwin --watch --tick-seconds 10 -v
+```
 
-- **SAPI renders the cache; it does not speak at event time.** Asked for
-  during step 5 as a placeholder voice so there is something to hear before
-  a better engine exists. Live synthesis was not built: it contradicts the
-  settled pre-rendered decision, and a delay after yanking the cable is the
-  one thing that kills the joke. Renders go through the same cache a Fish
-  or Kokoro backend will use, so step 7 swaps a class rather than a design.
-- **The cache path includes the engine key**, `<pack>/<engine>/<id>.wav`.
-  Line ids are stable by design, so an id-only key would serve SAPI audio
-  forever after switching engines. Switching is now a miss, and switching
-  back reuses what is there.
-- **Line ids are validated before becoming filenames**
-  (`[A-Za-z0-9][A-Za-z0-9._-]*`). Packs are data; an id must not write
-  outside the cache or create a hidden file. Not yet enforced by the pack
-  validator, only by the cache -- worth moving earlier if a third consumer
-  of ids appears.
-- **`settings.json` is separate from `state.json`.** Counters are written
-  on every event and are cheap to lose; preferences are written rarely and
-  annoying to lose. A corrupt counter file should not cost the user their
-  intensity and mute.
-- **A missing TTS engine raises instead of reporting a successful render of
-  nothing.** `warm()` swallows per-line failures but re-raises `ImportError`,
-  because that is a broken setup rather than a bad line. This is the same
-  silent-failure shape as the `escalation_10` bug.
-- **`Say something` does not touch the counters**, but does record the line
-  as last played, so a demo cannot immediately repeat what a real event just
-  said.
-- **Playback never raises.** A cache miss, a missing device or a wav
-  winsound cannot decode all degrade to a logged warning. Nothing about a
-  sound effect should take the tray down.
+Then pull the cable and put it back. Expect a line each way, and an
+escalation at 30 minutes if left unplugged. Then `--tray` for the whole
+thing together. Worth also testing sleep and resume: resume should adopt
+the new state silently, never announce it.
 
-**Windows run 2026-09-03.** `--warm` rendered 27 lines through real SAPI and
-`--simulate --play` played one through `WinsoundPlayer`, both correct on the
-first try. `--tray` crashed, now fixed:
+Decisions made during step 6:
 
-- *pystray rejects a callback with more than two parameters.* It reads
-  `action.__code__.co_argcount`, which **counts parameters that have
-  defaults**. The standard late-binding idiom, `lambda icon, item,
-  fn=item.action: fn()`, therefore reads as three parameters and raises
-  `ValueError(action)` while building the Intensity submenu. Callbacks are
-  now bound with closure factories (`_action_callback`,
-  `_checked_callback`) so the visible arity stays at two. The same idiom is
-  still used inside `build_menu`, where it is correct: those callables are
-  ours and are called with no arguments. Only the ones crossing into
-  pystray are constrained.
-- *The tray failure path caught only `ImportError`.* pystray selects a
-  backend at import, so where it is installed without a display it raises
-  the backend's own error instead. `run_tray` now catches `Exception` and
-  prints a legible message.
+- **The pure decisions live in `power/messages.py`, away from ctypes.**
+  `ctypes.WINFUNCTYPE` does not exist off Windows, so anything importing it
+  cannot even be imported here, let alone tested. Splitting them means the
+  part with branching is tested and the untestable part is a thin adapter.
+- **Every Win32 function is explicitly prototyped** (`_declare`). An
+  unprototyped ctypes function defaults to `restype = c_int`, 32 bits, so
+  `CreateWindowExW` and `GetModuleHandleW` would truncate the pointers they
+  return on 64-bit Windows. Found by inspection, since no Linux test can
+  reach it.
+- **The WNDPROC is kept alive on the instance.** If that reference is
+  dropped, ctypes frees the trampoline and Windows calls into freed memory
+  on the next message.
+- **Resume is a resync, not an event.** The cable may have moved while the
+  machine slept; announcing a disconnect whose timing is unknown is worse
+  than adopting the state silently.
+- **ACLineStatus 255 is ignored, never guessed.** Treating unknown as
+  unplugged would invent a disconnect.
+- **The watcher runs its own thread with its own message loop**, because
+  pystray owns the main thread and window messages are delivered per
+  thread. `App` takes an `RLock` around every state transition, since the
+  watcher and ticker threads both mutate what the tray thread reads.
+- **The ticker polls the clock, not the power state.** Nothing broadcasts
+  "thirty minutes have passed". The power state itself is still purely
+  event driven, which is what the settled decision requires.
 
-`_to_pystray` was written off as "thin, holds no logic worth testing"; it
-held the arity contract, which is precisely the sort of thing that cannot
-be seen from the data model. `tests/test_tray_pystray.py` now converts a
-real menu against a stub that mirrors `_assert_action`, so this class of
-bug fails in the Codespace instead of on the laptop.
-
-Still unverified on Windows: the tray itself running to a visible icon, and
-menu interaction. `pystray` installs in the Codespace but cannot start
-without a display, so conversion is tested and the running icon is not.
+Next action: verify step 6 on the laptop, then step 7 (a better TTS engine)
+or step 8 (batch line generation). Neither is blocked by the other.
 
 ## Secrets
 

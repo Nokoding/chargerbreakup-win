@@ -17,6 +17,7 @@ import os
 import random
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,8 +83,72 @@ class App:
             muted=self.settings.muted,
         )
         self.tray = TrayIcon(self.menu)
+        # The power watcher and the ticker run on their own threads and both
+        # mutate state; the tray thread reads it to build the menu. One lock
+        # around every state transition is plenty at this event rate.
+        self._lock = threading.RLock()
+        self._watcher = None
+        self._ticker = None
 
     # ----- event path ----------------------------------------------------
+
+    def start_power_watch(self, interval: float | None = None) -> bool:
+        """Begin listening for real power events. Windows only.
+
+        Returns False and leaves the app usable if the hook is unavailable:
+        the tray, the menu and `Say something` all still work, which is worth
+        more than refusing to start.
+        """
+        from .ticker import DEFAULT_INTERVAL_SECONDS, EscalationTicker
+
+        try:
+            from .power.windows import PowerWatcher, WindowsPowerSource
+        except Exception as exc:
+            log.warning("power hook unavailable (%s); no automatic events", exc)
+            return False
+
+        source = WindowsPowerSource()
+        self._watcher = PowerWatcher(lambda action: self.handle_power_action(action, source.status()))
+        self._watcher.start()
+        # Adopt the status as it is right now, before any message arrives.
+        # Whatever happened while the app was closed is not ours to announce.
+        initial = source.status()
+        if initial.plugged is not None:
+            self.resync(initial.plugged)
+        self._ticker = EscalationTicker(
+            self.on_tick, interval=interval or DEFAULT_INTERVAL_SECONDS
+        )
+        self._ticker.start()
+        return True
+
+    def stop_power_watch(self) -> None:
+        for component in (self._ticker, self._watcher):
+            if component is not None:
+                try:
+                    component.stop()
+                except Exception:
+                    log.debug("failed to stop %s", type(component).__name__, exc_info=True)
+        self._ticker = self._watcher = None
+
+    def handle_power_action(self, action, status) -> Reaction | None:
+        """Route a classified message plus a fresh reading into the state.
+
+        Separate from `start_power_watch` so it can be tested without the
+        Windows-only module: this is where the decisions are, the watcher is
+        only delivery.
+        """
+        from .power.messages import PowerAction
+
+        if status.plugged is None:
+            # Windows reports ACLineStatus 255. Guessing would invent an event.
+            log.debug("AC status unknown; ignoring this message")
+            return None
+        if action is PowerAction.RESYNC:
+            self.resync(status.plugged)
+            return None
+        if action is PowerAction.READ_STATUS:
+            return self.on_power_status(status.plugged, status.battery_percent)
+        return None
 
     def resync(self, plugged: bool) -> None:
         """Adopt the real AC status at startup without speaking or counting.
@@ -92,32 +157,44 @@ class App:
         not have to rely on that: the intent at startup is explicitly to
         adopt, not to diff.
         """
-        self.state.resync(plugged, now_local())
-        self.state_store.save(self.state)
+        with self._lock:
+            self.state.resync(plugged, now_local())
+            self.state_store.save(self.state)
 
     def on_power_status(self, plugged: bool, battery_percent: int | None = None) -> Reaction | None:
         """A fresh AC reading. The only entry point step 6 needs."""
         now = now_local()
-        event = self.state.observe(plugged, now)
+        with self._lock:
+            event = self.state.observe(plugged, now)
         return self._react_and_save(event, now, battery_percent)
 
     def on_tick(self, battery_percent: int | None = None) -> Reaction | None:
         """Called by a timer while unplugged, for escalations."""
         now = now_local()
-        event = self.state.due_escalation(now)
+        with self._lock:
+            event = self.state.due_escalation(now)
         return self._react_and_save(event, now, battery_percent)
 
     def _react_and_save(self, event, now: datetime, battery_percent: int | None) -> Reaction | None:
         if event is None:
             return None
-        reaction = react(event, self.state, self.pack, self.settings.intensity, now, self.rng, battery_percent)
-        self.state_store.save(self.state)
+        with self._lock:
+            reaction = react(
+                event, self.state, self.pack, self.settings.intensity, now, self.rng, battery_percent
+            )
+            self.state_store.save(self.state)
+        # Playback is outside the lock: it is fire-and-forget, and holding a
+        # lock across it would serialise events behind the audio stack.
         self.speaker.speak(reaction)
         return reaction
 
     # ----- menu ----------------------------------------------------------
 
     def menu(self):
+        with self._lock:
+            return self._menu_locked()
+
+    def _menu_locked(self):
         absence = None
         if self.state.connected is False and self.state.disconnected_at is not None:
             absence = humanize_seconds(self.state.absence_seconds(now_local()))
@@ -168,7 +245,9 @@ class App:
             log.warning("could not open %s", path, exc_info=True)
 
     def quit(self) -> None:
-        self.state_store.save(self.state)
+        self.stop_power_watch()
+        with self._lock:
+            self.state_store.save(self.state)
         self.tray.stop()
 
     # ----- startup -------------------------------------------------------

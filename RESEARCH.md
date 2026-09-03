@@ -335,6 +335,15 @@ something now costs nothing later -- a better engine is a new `Renderer`
 subclass with a different `key`, and the cache path includes that key so the
 old audio is never served by mistake. Decided 2026-09-03.
 
+**Battery percent comes from GetSystemPowerStatus, not psutil.** Planning
+said psutil for percent and `power_plugged`. The power message handler has
+to call GetSystemPowerStatus anyway, because WM_POWERBROADCAST carries no
+state, and that struct already contains BatteryLifePercent. Reading both
+from one call is one syscall instead of two and, more importantly, the AC
+status and the percent cannot disagree, which they can if read separately a
+moment apart. psutil stays as the fallback for when the struct reports 255,
+"unknown". Changed 2026-09-03.
+
 **Ship the OS voice as default.** Matches the original's approach and means
 the app works immediately with zero configuration or API keys. Better
 voices are an upgrade path, not a requirement.
