@@ -153,11 +153,16 @@ def run_tray(args) -> int:
     print(f"chargerwin tray: {app.pack.id} at {app.settings.intensity}. Ctrl-C to quit.")
     try:
         app.tray.run()
-    except ImportError as exc:
-        print(f"tray unavailable: {exc}\nInstall pystray and Pillow, or use --simulate.")
-        return 1
     except KeyboardInterrupt:
         app.quit()
+    except Exception as exc:
+        # Not just ImportError: pystray picks a backend at import time, so on a
+        # machine where it is installed but there is no display it raises the
+        # backend's own error (Xlib.error.DisplayNameError on Linux). Catching
+        # ImportError alone let that reach the user as a raw traceback.
+        print(f"tray unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print("Needs pystray, Pillow and a desktop session. Use --simulate to test the pipeline.")
+        return 1
     return 0
 
 

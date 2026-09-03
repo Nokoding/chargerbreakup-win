@@ -225,10 +225,34 @@ Decisions made during step 5:
   winsound cannot decode all degrade to a logged warning. Nothing about a
   sound effect should take the tray down.
 
-Still unverified on Windows: everything in step 5. `pystray`, `Pillow` and
-`pyttsx3` do not install in the Linux dev environment, so the tray, the icon
-and real SAPI rendering have only been exercised through fakes. Verify with
-`--warm` then `--tray` on the laptop before building step 6 on top.
+**Windows run 2026-09-03.** `--warm` rendered 27 lines through real SAPI and
+`--simulate --play` played one through `WinsoundPlayer`, both correct on the
+first try. `--tray` crashed, now fixed:
+
+- *pystray rejects a callback with more than two parameters.* It reads
+  `action.__code__.co_argcount`, which **counts parameters that have
+  defaults**. The standard late-binding idiom, `lambda icon, item,
+  fn=item.action: fn()`, therefore reads as three parameters and raises
+  `ValueError(action)` while building the Intensity submenu. Callbacks are
+  now bound with closure factories (`_action_callback`,
+  `_checked_callback`) so the visible arity stays at two. The same idiom is
+  still used inside `build_menu`, where it is correct: those callables are
+  ours and are called with no arguments. Only the ones crossing into
+  pystray are constrained.
+- *The tray failure path caught only `ImportError`.* pystray selects a
+  backend at import, so where it is installed without a display it raises
+  the backend's own error instead. `run_tray` now catches `Exception` and
+  prints a legible message.
+
+`_to_pystray` was written off as "thin, holds no logic worth testing"; it
+held the arity contract, which is precisely the sort of thing that cannot
+be seen from the data model. `tests/test_tray_pystray.py` now converts a
+real menu against a stub that mirrors `_assert_action`, so this class of
+bug fails in the Codespace instead of on the laptop.
+
+Still unverified on Windows: the tray itself running to a visible icon, and
+menu interaction. `pystray` installs in the Codespace but cannot start
+without a display, so conversion is tested and the running icon is not.
 
 ## Secrets
 

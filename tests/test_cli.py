@@ -214,8 +214,13 @@ def test_simulate_play_on_an_empty_cache_says_so(run, state_dir):
     assert code == 0 and "no cached wav" in out and "--warm" in out
 
 
-def test_tray_reports_a_missing_dependency(run, state_dir):
-    """pystray does not install here; the failure must be legible."""
-    code, out, _ = run("--tray", "--engine", "fake", "--state-dir", state_dir)
-    assert code == 1 and "tray unavailable" in out
+def test_tray_reports_an_unavailable_tray_legibly(run, state_dir):
+    """The tray cannot start in this environment, either because pystray is
+    absent or because it is present with no display. Both must exit 1 with a
+    readable message rather than a traceback, so the test does not care which
+    of the two it hit."""
+    code, out, err = run("--tray", "--engine", "fake", "--state-dir", state_dir)
+    assert code == 1
+    assert "tray unavailable" in err
+    assert "--simulate" in out
 

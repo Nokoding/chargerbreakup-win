@@ -115,8 +115,32 @@ def make_image(size: int = 64):
     return image
 
 
+def _action_callback(fn: Callable[[], None]):
+    """Wrap a zero-argument action as a pystray callback.
+
+    pystray inspects `action.__code__.co_argcount` and accepts only 0, 1 or
+    2 parameters. co_argcount counts parameters that have defaults, so the
+    usual late-binding idiom -- `lambda icon, item, fn=fn: fn()` -- reads as
+    three parameters and is rejected with `ValueError(action)`. Bind with a
+    closure instead, which keeps the visible arity at two.
+    """
+    return lambda _icon, _item: fn()
+
+
+def _checked_callback(value: bool):
+    """pystray calls `checked` with one argument, the item. Same closure rule
+    as `_action_callback`: no default arguments."""
+    return lambda _item: value
+
+
 class TrayIcon:
-    """Thin pystray shell. Holds no logic worth testing."""
+    """Thin pystray shell.
+
+    The only real logic here is `_to_pystray`, which has to satisfy pystray's
+    callback-arity contract. That contract is not visible from the data model
+    in `build_menu`, so it is tested separately against a stub that mirrors
+    the rule.
+    """
 
     def __init__(self, menu_factory: Callable[[], list[MenuItem]], title: str = APP_NAME):
         self.menu_factory = menu_factory
@@ -139,8 +163,8 @@ class TrayIcon:
             converted.append(
                 pystray.MenuItem(
                     item.label,
-                    (lambda _icon, _item, fn=item.action: fn()) if item.action else None,
-                    checked=(lambda _item, value=item.checked: value) if item.checked is not None else None,
+                    _action_callback(item.action) if item.action else None,
+                    checked=_checked_callback(item.checked) if item.checked is not None else None,
                     radio=item.radio,
                     enabled=item.enabled,
                 )
