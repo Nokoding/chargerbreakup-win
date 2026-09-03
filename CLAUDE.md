@@ -35,6 +35,7 @@ Decided during planning. Do not re-open without being asked.
 | Event detection | Hidden message-only window, `WM_POWERBROADCAST` (0x218) + `PBT_APMPOWERSTATUSCHANGE` (0xA), then `GetSystemPowerStatus` for state. Event driven, never poll. |
 | State comparison | Always diff against last known AC status. The message also fires on battery-percentage changes, so not every message is a plug event. |
 | Windows API binding | `ctypes`, not `pywin32`. `pywin32` cannot install in the Linux dev environment, so depending on it would make the whole module unimportable here rather than just unverifiable. |
+| Escalation cadence | Fires at **30 and 60 minutes** unplugged. 10 was tried and cut; see `RESEARCH.md` before re-adding it. Any firing threshold must have its group in `REQUIRED_GROUPS`, or the escalation is silent. |
 | Battery data | `psutil.sensors_battery()` for percent and `power_plugged` |
 | Tray | `pystray` |
 | Packaging | PyInstaller, single exe |
@@ -106,7 +107,7 @@ Variables: `{{battery_percent}}`, `{{absence_seconds}}`,
 
 Time windows: late night 22:00-04:59, morning 05:00-11:59, afternoon
 12:00-16:59, evening 17:00-21:59. Escalations fire while still unplugged at
-10, 30, 60 minutes. Rapid groups key off disconnect count today.
+30 and 60 minutes. Rapid groups key off disconnect count today.
 
 ## Selector semantics
 
@@ -140,8 +141,9 @@ of a disconnect.
 Rule 3 matters: silence beats a wrong-tone line. The validator catches
 empty *required* groups at load time, so for those it never fires. It can
 still fire for a non-required group whose chain dead-ends, which is a
-content bug, not a selector bug. See the `escalation_10` gap under Current
-position.
+content bug, not a selector bug. Anything that *fires* must therefore be in
+`REQUIRED_GROUPS`; `test_every_firing_escalation_has_guaranteed_content`
+enforces that for escalations.
 
 **Time of day merges, does not override.** Candidates for a disconnect are
 `immediate` plus the matching `immediate_<timeofday>` in one pool, with
@@ -191,19 +193,13 @@ python -m chargerwin --simulate plug   --state-dir %TEMP%\cw
 That confirms the core is sound on the target OS without needing the power
 hook to exist yet. Step 5 unlocks once it passes.
 
-**Known bug: the 10-minute escalation is silent.**
-`groups.ESCALATION_MINUTES` fires at 10, 30 and 60 minutes, but
-`escalation_10` is not in `REQUIRED_GROUPS`, is not populated in
-`field_notes.json`, and the escalation chain does not fall through to
-`immediate`. So the first escalation a user hears after unplugging is
-nothing at all, with a warning in the log. Reproduce with
-`--simulate unplug` then `--simulate tick --now <+12min>`.
-
-Two ways out, both needing a call: populate `escalation_10` and add it to
-`REQUIRED_GROUPS` (9 lines, keeps the documented 10/30/60 cadence), or drop
-10 from `ESCALATION_MINUTES` and escalate only at 30 and 60. Do not fix it
-by letting escalations fall back to `immediate`; that is the thing the
-selector section rules out.
+**Fixed 2026-09-03: the 10-minute escalation used to be silent.** It fired,
+had no required group, and escalations do not fall back to `immediate`, so
+the first escalation a user heard was nothing. Resolved by cutting 10 from
+the cadence rather than by writing lines for it. `ESCALATION_MINUTES` is now
+the fire schedule `(30, 60)`; `ESCALATION_GROUP_MINUTES` still lists all
+three so `escalation_10` stays a valid group name and re-adding it later is
+additive.
 
 Decisions made during the build that are not obvious from the code:
 

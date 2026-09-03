@@ -160,8 +160,7 @@ def test_react_rapid_sequence_with_sample_pack(sample_pack):
 def test_react_escalations_with_sample_pack(sample_pack):
     s = State(connected=True)
     unplug(s, at(10))
-    ten = s.due_escalation(at(10, 10))
-    assert react(ten, s, sample_pack, "medium", at(10, 10), random.Random(1)) is None  # not in v1, silent
+    assert s.due_escalation(at(10, 10)) is None  # 10 minutes no longer escalates
     thirty = s.due_escalation(at(10, 30))
     r30 = react(thirty, s, sample_pack, "medium", at(10, 30), random.Random(1))
     assert r30.selection.group == "escalation_30"

@@ -17,9 +17,17 @@ TIMES_OF_DAY: tuple[str, ...] = ("late_night", "morning", "afternoon", "evening"
 IMMEDIATE = "immediate"
 IMMEDIATE_BY_TIME: dict[str, str] = {tod: f"immediate_{tod}" for tod in TIMES_OF_DAY}
 
-# Minutes after a disconnect at which an escalation fires if still unplugged.
-ESCALATION_MINUTES: tuple[int, ...] = (10, 30, 60)
-ESCALATION_GROUPS: tuple[str, ...] = tuple(f"escalation_{m}" for m in ESCALATION_MINUTES)
+# Escalation group names the schema accepts. Deliberately still includes
+# escalation_10 even though nothing fires it any more: removing the name would
+# turn a pack that defines the group into a validation error, and re-adding the
+# cadence later has to stay additive rather than become a migration.
+ESCALATION_GROUP_MINUTES: tuple[int, ...] = (10, 30, 60)
+ESCALATION_GROUPS: tuple[str, ...] = tuple(f"escalation_{m}" for m in ESCALATION_GROUP_MINUTES)
+
+# Minutes after a disconnect at which an escalation actually fires if still
+# unplugged. 10 was tried and cut: ten minutes off the charger is normal laptop
+# use, not an absence worth remarking on. See RESEARCH.md before re-adding it.
+ESCALATION_MINUTES: tuple[int, ...] = (30, 60)
 
 # Ordered from fewest disconnects to most. Fallback walks toward the front.
 RAPID_GROUPS: tuple[str, ...] = (

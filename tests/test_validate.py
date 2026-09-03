@@ -240,3 +240,28 @@ def test_lower_intensities_rejects_unknown():
     assert lower_intensities("mild") == ["mild"]
     with pytest.raises(ValueError):
         lower_intensities("nuclear")
+
+
+def test_every_firing_escalation_has_guaranteed_content():
+    """A threshold that fires must have a group the validator forces packs to
+    populate, otherwise the escalation happens and nothing is said.
+
+    This is exactly how escalation_10 shipped broken: it fired at ten minutes,
+    was not in REQUIRED_GROUPS, and escalations do not fall back to immediate,
+    so the first escalation a user heard was silence. Ten minutes was then cut
+    from the cadence. If a threshold is ever added back, this fails until its
+    group is required too.
+    """
+    from chargerwin.groups import ESCALATION_MINUTES, REQUIRED_GROUPS
+
+    for minutes in ESCALATION_MINUTES:
+        assert f"escalation_{minutes}" in REQUIRED_GROUPS
+
+
+def test_retired_escalation_group_is_still_a_valid_name():
+    """escalation_10 no longer fires, but a pack defining it must stay valid so
+    re-adding the cadence later is additive rather than a migration."""
+    from chargerwin.groups import ALL_GROUPS, ESCALATION_MINUTES
+
+    assert "escalation_10" in ALL_GROUPS
+    assert 10 not in ESCALATION_MINUTES

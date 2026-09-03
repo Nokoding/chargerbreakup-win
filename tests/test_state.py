@@ -174,20 +174,19 @@ def test_escalations_fire_once_each_in_order():
     s = connected_state()
     s.observe(False, at(10))
     assert s.due_escalation(at(10, 5)) is None
-    assert s.due_escalation(at(10, 10)) == Escalated(minutes=10, absence_seconds=600.0)
-    assert s.due_escalation(at(10, 11)) is None
+    assert s.due_escalation(at(10, 10)) is None  # 10 is no longer a threshold
     assert s.due_escalation(at(10, 30)) == Escalated(minutes=30, absence_seconds=1800.0)
     assert s.due_escalation(at(10, 59)) is None
     assert s.due_escalation(at(11, 0)) == Escalated(minutes=60, absence_seconds=3600.0)
     assert s.due_escalation(at(13, 0)) is None
-    assert s.escalations_fired == [10, 30, 60]
+    assert s.escalations_fired == [30, 60]
 
 
 def test_waking_from_sleep_fires_only_the_highest_crossed_threshold():
     s = connected_state()
     s.observe(False, at(10))
     assert s.due_escalation(at(10, 45)) == Escalated(minutes=30, absence_seconds=2700.0)
-    assert s.escalations_fired == [10, 30]
+    assert s.escalations_fired == [30]
     assert s.due_escalation(at(10, 46)) is None
     assert s.due_escalation(at(11, 5)).minutes == 60
 
@@ -204,8 +203,8 @@ def test_reconnect_clears_escalations_and_new_disconnect_starts_over():
     s.observe(True, at(10, 31))
     assert s.escalations_fired == []
     s.observe(False, at(11))
-    assert s.due_escalation(at(11, 5)) is None
-    assert s.due_escalation(at(11, 10)).minutes == 10
+    assert s.due_escalation(at(11, 20)) is None
+    assert s.due_escalation(at(11, 30)).minutes == 30
 
 
 # ----- resync ----------------------------------------------------------------
@@ -214,11 +213,11 @@ def test_reconnect_clears_escalations_and_new_disconnect_starts_over():
 def test_resync_keeps_disconnect_time_when_still_unplugged():
     s = connected_state()
     s.observe(False, at(10))
-    s.due_escalation(at(10, 10))
-    s.resync(False, at(10, 20))
+    s.due_escalation(at(10, 30))
+    s.resync(False, at(10, 40))
     assert s.disconnected_at == at(10)
-    assert s.escalations_fired == [10]
-    assert s.due_escalation(at(10, 30)).minutes == 30
+    assert s.escalations_fired == [30]
+    assert s.due_escalation(at(11, 0)).minutes == 60
 
 
 def test_resync_to_unplugged_from_connected_starts_the_clock_now_silently():

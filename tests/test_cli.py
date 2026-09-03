@@ -103,9 +103,9 @@ def test_simulate_tick_escalates(run, state_dir):
     code, out, _ = run("--simulate", "tick", "--now", "2026-09-02T10:05", "--state-dir", state_dir)
     assert code == 0 and "nothing due" in out and "unplugged for 5 minutes" in out
     code, out, _ = run("--simulate", "tick", "--now", "2026-09-02T10:12", "--state-dir", state_dir)
-    assert code == 0 and "silence" in out  # escalation_10 is not in v1
+    assert code == 0 and "nothing due" in out  # 10 minutes is not a threshold
     code, out, _ = run("--simulate", "tick", "--now", "2026-09-02T10:31", "--state-dir", state_dir)
-    assert code == 0 and "-> medium/escalation_30" in out and "escalations fired [10, 30]" in out
+    assert code == 0 and "-> medium/escalation_30" in out and "escalations fired [30]" in out
     code, out, _ = run("--simulate", "tick", "--now", "2026-09-02T10:32", "--state-dir", state_dir)
     assert "nothing due" in out
 

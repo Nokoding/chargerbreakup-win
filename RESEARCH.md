@@ -81,7 +81,7 @@ of ~21 reaction groups plus its own apology prompt.
 Reaction groups key off three independent axes:
 
 1. **Time of day** at the moment of disconnect
-2. **Elapsed time** still unplugged (10, 30, 60 minute escalations)
+2. **Elapsed time** still unplugged (10, 30, 60 minute escalations; we ship 30 and 60, see section 6)
 3. **Repeat count** of disconnects that day (2, 3, 4, 5, 6-9, 10, 11-19,
    20, 21+)
 
@@ -306,6 +306,26 @@ app. v1 ships 9 groups, the schema supports all 21, and the selector falls
 back gracefully so adding groups later is additive rather than a migration.
 Ship the skeleton, fill it in over time.
 
+**Escalation cadence is 30 and 60 minutes, not 10, 30 and 60.** The
+original escalates at ten minutes and we copied that. Cut on 2026-09-03
+after running it: ten minutes off the charger is ordinary laptop use, not
+an absence. Somebody carries the machine to the kitchen table, or reads
+something on the sofa, and gets nagged for it. The joke depends on the app
+being right that you have been gone a while, and at ten minutes it is not
+right. Thirty is the first point where a comment lands.
+
+Cutting it also removed a bug rather than papering over one. `escalation_10`
+fired but was never a required group, and escalations deliberately do not
+fall back to `immediate`, so the first escalation a user heard was silence
+plus a log warning. The alternative fix was writing nine lines for a
+threshold that should not fire anyway.
+
+If you are considering re-adding it: this was tried and cut deliberately,
+not overlooked. Re-adding means adding `escalation_10` to `REQUIRED_GROUPS`
+and populating it in every pack, which
+`test_every_firing_escalation_has_guaranteed_content` will insist on. The
+group name is still valid in the schema precisely so that stays additive.
+
 **Ship the OS voice as default.** Matches the original's approach and means
 the app works immediately with zero configuration or API keys. Better
 voices are an upgrade path, not a requirement.
@@ -339,4 +359,8 @@ voices are an upgrade path, not a requirement.
   build (2026-09-02) because omitting it sends every 5-to-60-minute
   absence to the under-5-minute lines. Three lines per intensity, so it
   does not reopen the content-wall argument.
+- Escalation cadence: 10-minute escalation tried and cut 2026-09-03,
+  leaving 30 and 60. Fires during normal laptop use rather than an actual
+  absence, and it shipped silent because nothing required its lines.
+  Rationale in section 6. Do not re-add without reading it.
 - The Instagram reel is out of scope. Marketing reach is not a build input.

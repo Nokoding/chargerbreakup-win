@@ -73,8 +73,12 @@ When a group is empty the selector falls back along a fixed chain (see
   group, so a `rapid_3` line can play on the seventh disconnect. Do not
   hard-code the count in rapid lines unless the group above it is also
   populated; use `{{today_count}}` instead, or write around the number.
-- `escalation_10` never falls back to `immediate` (wrong tone). Leave it
-  empty and nothing plays at ten minutes.
+- `escalation_10` is accepted but never fires: the cadence is 30 and 60
+  minutes only. Lines written for it will not play. It stays in the
+  vocabulary so a pack defining it remains valid.
+- Escalations never fall back to `immediate` (wrong tone). An escalation
+  group with no lines anywhere in the chain plays nothing at all, which is
+  why every firing threshold is a required group.
 
 Time of day merges rather than overrides: a first disconnect draws from
 `immediate` and `immediate_<time>` together, with each time-specific line
