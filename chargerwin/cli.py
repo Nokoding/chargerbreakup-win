@@ -23,7 +23,7 @@ from .groups import DEFAULT_INTENSITY, INTENSITIES
 from .packs import find_pack, list_packs, load_pack, packs_dir
 from .pipeline import react
 from .power import FakePowerSource
-from .state import State, StateStore
+from .state import State, StateStore, default_state_dir
 from .timeofday import time_of_day
 from .validate import PackError
 from .variables import humanize_seconds
@@ -45,6 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
         "'tick' fires whatever escalation is due for the current absence.",
     )
     action.add_argument(
+        "--tray",
+        action="store_true",
+        help="run the tray app (Windows; elsewhere the icon needs a display and audio stays silent)",
+    )
+    action.add_argument(
+        "--warm",
+        action="store_true",
+        help="render missing audio into the cache and exit. Safe to re-run: only missing lines cost anything.",
+    )
+    action.add_argument(
         "--validate",
         nargs="*",
         metavar="PACK",
@@ -57,6 +67,19 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--intensity", choices=INTENSITIES, default=DEFAULT_INTENSITY)
     sim.add_argument("--battery", type=int, help="battery percent reported by the fake source (default 50)")
     sim.add_argument("--seed", type=int, help="seed the random draw for a repeatable line")
+    audio = parser.add_argument_group("audio options")
+    audio.add_argument("--cache-dir", help="directory holding rendered wavs (default: <state-dir>/audio-cache)")
+    audio.add_argument(
+        "--engine",
+        default=None,
+        help="tts engine used to render: 'sapi' (Windows default) or 'fake' (silent wavs, for dev)",
+    )
+    audio.add_argument("--force", action="store_true", help="with --warm, re-render lines that are already cached")
+    audio.add_argument(
+        "--play",
+        action="store_true",
+        help="with --simulate, also play the cached wav for the chosen line (silent if not yet rendered)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     return parser
 
@@ -77,11 +100,65 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.validate is not None:
         return run_validate(args.validate)
+    if args.warm:
+        return run_warm(args)
+    if args.tray:
+        return run_tray(args)
     if args.simulate:
         return run_simulate(args)
     parser.print_usage()
-    print("The tray app is not built yet (build step 5). Use --simulate or --validate.")
+    print("Nothing to do. Try --tray, --warm, --simulate or --validate.")
     return 2
+
+
+def build_app(args):
+    """An App configured from the CLI flags, overriding saved settings."""
+    from .app import App
+
+    app = App(
+        state_dir=Path(args.state_dir) if args.state_dir else None,
+        cache_dir=Path(args.cache_dir) if args.cache_dir else None,
+        pack=find_pack(args.pack),
+        rng=random.Random(args.seed) if args.seed is not None else None,
+    )
+    # Flags win over settings.json for this run, without persisting.
+    app.settings.intensity = args.intensity
+    if args.engine:
+        app.settings.tts_engine = args.engine
+        from .voice import VoiceCache, renderer_for
+
+        app.speaker.cache = VoiceCache(app.cache_dir, app.pack.id, renderer_for(app.pack, args.engine))
+    return app
+
+
+def run_warm(args) -> int:
+    app = build_app(args)
+    cache = app.speaker.cache
+    print(f"rendering {app.pack.id} at {app.settings.intensity} with '{cache.renderer.key}' into {cache.root}")
+    try:
+        count = cache.warm(app.pack, [app.settings.intensity], force=args.force)
+    except ImportError as exc:
+        print(f"engine '{cache.renderer.key}' is unavailable here: {exc}")
+        print("Use --engine fake for a silent cache, or run this on Windows for SAPI.")
+        return 1
+    print(f"rendered {count} line(s); cache now holds {len(list(cache.root.glob('*.wav')))}")
+    return 0
+
+
+def run_tray(args) -> int:
+    app = build_app(args)
+    missing = app.speaker.cache.warm(app.pack, [app.settings.intensity])
+    if missing:
+        print(f"rendered {missing} missing line(s)")
+    print(f"chargerwin tray: {app.pack.id} at {app.settings.intensity}. Ctrl-C to quit.")
+    try:
+        app.tray.run()
+    except ImportError as exc:
+        print(f"tray unavailable: {exc}\nInstall pystray and Pillow, or use --simulate.")
+        return 1
+    except KeyboardInterrupt:
+        app.quit()
+    return 0
 
 
 def run_validate(targets: list[str]) -> int:
@@ -147,8 +224,29 @@ def run_simulate(args: argparse.Namespace) -> int:
     requested = "" if sel.requested_group == sel.group else f" (requested {sel.requested_group})"
     print(f"[{args.simulate}] {stamp} {time_of_day(now)} -> {sel.intensity}/{sel.group}{requested} [{sel.line.id}]")
     print(reaction.text)
+    if args.play:
+        print(f"[audio] {play_reaction(args, pack, reaction)}")
     print(f"[state] {describe(state, now)}")
     return 0
+
+
+def play_reaction(args, pack, reaction) -> str:
+    """Play the cached wav for a simulated line. Reports what happened rather
+    than raising: --simulate exists to show the line, and a missing cache
+    should not fail the run."""
+    from .audio import select_player
+    from .voice import VoiceCache, renderer_for
+
+    cache_dir = Path(args.cache_dir) if args.cache_dir else default_state_dir() / "audio-cache"
+    if args.state_dir and not args.cache_dir:
+        cache_dir = Path(args.state_dir) / "audio-cache"
+    cache = VoiceCache(cache_dir, pack.id, renderer_for(pack, args.engine or "sapi"))
+    path = cache.lookup(reaction.selection.line.id)
+    if path is None:
+        return f"no cached wav for {reaction.selection.line.id}; run --warm first"
+    player = select_player()
+    player.play(path)
+    return f"played {path} via {type(player).__name__}"
 
 
 def describe(state: State, now: datetime) -> str:

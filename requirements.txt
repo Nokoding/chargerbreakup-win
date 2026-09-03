@@ -4,6 +4,6 @@
 psutil>=5.9                 # battery percent / power_plugged (step 6)
 pystray>=0.19               # tray icon (step 5)
 Pillow>=10                  # tray icon image for pystray (step 5)
-pyttsx3>=2.90               # Windows SAPI default voice (step 7)
+pyttsx3>=2.90               # Windows SAPI, renders the wav cache (steps 5 and 7)
 python-dotenv>=1.0          # .env loading for the offline generation script (step 8)
 # No pywin32: the message-only window uses ctypes (see CLAUDE.md, settled decisions).

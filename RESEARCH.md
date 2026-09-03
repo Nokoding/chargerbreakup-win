@@ -326,6 +326,15 @@ and populating it in every pack, which
 `test_every_firing_escalation_has_guaranteed_content` will insist on. The
 group name is still valid in the schema precisely so that stays additive.
 
+**SAPI is the placeholder voice, and it renders rather than speaks.**
+Step 5 needed something audible before step 7 chose a real engine. The
+tempting shortcut is calling `pyttsx3.say()` on the event path, which is
+wrong for the reason stated above: the joke is the immediacy. Instead SAPI
+writes wavs into the same cache Fish or Kokoro will write into, so hearing
+something now costs nothing later -- a better engine is a new `Renderer`
+subclass with a different `key`, and the cache path includes that key so the
+old audio is never served by mistake. Decided 2026-09-03.
+
 **Ship the OS voice as default.** Matches the original's approach and means
 the app works immediately with zero configuration or API keys. Better
 voices are an upgrade path, not a requirement.

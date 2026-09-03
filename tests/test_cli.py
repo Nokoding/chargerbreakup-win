@@ -26,7 +26,7 @@ def state_dir(tmp_path):
 def test_no_action_prints_usage_and_exits_2(run):
     code, out, err = run()
     assert code == 2
-    assert "not built yet" in out
+    assert "Nothing to do" in out
 
 
 def test_version(capsys):
@@ -172,3 +172,50 @@ def test_module_entry_point_runs():
     result = subprocess.run([sys.executable, "-m", "chargerwin", "--validate"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+# ----- step 5: audio and tray -------------------------------------------
+
+
+def test_warm_renders_into_an_engine_keyed_directory(run, state_dir, tmp_path):
+    code, out, _ = run("--warm", "--engine", "fake", "--state-dir", state_dir)
+    assert code == 0 and "rendered 27 line(s)" in out
+    assert "/fake" in out or "\\fake" in out
+    code, out, _ = run("--warm", "--engine", "fake", "--state-dir", state_dir)
+    assert code == 0 and "rendered 0 line(s)" in out
+
+
+def test_warm_force_re_renders(run, state_dir):
+    run("--warm", "--engine", "fake", "--state-dir", state_dir)
+    code, out, _ = run("--warm", "--engine", "fake", "--force", "--state-dir", state_dir)
+    assert code == 0 and "rendered 27 line(s)" in out
+
+
+def test_warm_reports_a_missing_engine_instead_of_claiming_success(run, state_dir):
+    """pyttsx3 is not installed in the dev environment. Reporting 'rendered 0'
+    and exiting 0 would be the same silent failure that shipped escalation_10."""
+    code, out, _ = run("--warm", "--engine", "sapi", "--state-dir", state_dir)
+    assert code == 1
+    assert "unavailable" in out and "--engine fake" in out
+
+
+def test_simulate_play_uses_the_cache(run, state_dir):
+    run("--warm", "--engine", "fake", "--state-dir", state_dir)
+    code, out, _ = run(
+        "--simulate", "unplug", "--engine", "fake", "--play", "--seed", "1", "--state-dir", state_dir
+    )
+    assert code == 0 and "[audio] played" in out and ".wav" in out
+
+
+def test_simulate_play_on_an_empty_cache_says_so(run, state_dir):
+    code, out, _ = run(
+        "--simulate", "unplug", "--engine", "fake", "--play", "--seed", "1", "--state-dir", state_dir
+    )
+    assert code == 0 and "no cached wav" in out and "--warm" in out
+
+
+def test_tray_reports_a_missing_dependency(run, state_dir):
+    """pystray does not install here; the failure must be legible."""
+    code, out, _ = run("--tray", "--engine", "fake", "--state-dir", state_dir)
+    assert code == 1 and "tray unavailable" in out
+

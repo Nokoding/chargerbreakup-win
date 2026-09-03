@@ -39,7 +39,7 @@ Decided during planning. Do not re-open without being asked.
 | Battery data | `psutil.sensors_battery()` for percent and `power_plugged` |
 | Tray | `pystray` |
 | Packaging | PyInstaller, single exe |
-| TTS at runtime | None. Lines pre-rendered to wav, cached on disk, keyed by line id. |
+| TTS at runtime | None. Lines pre-rendered to wav, cached on disk, keyed by line id **and engine**. The engine is in the cache path so replacing the placeholder voice is a cache miss, not stale audio. |
 | Default voice | Windows SAPI via `pyttsx3`. Works with zero config. Better voices are an upgrade path. |
 | Line generation | Separate offline batch script. Not part of the running app. |
 | State persistence | JSON in `%APPDATA%\chargerwin\`. Path injectable for tests. |
@@ -160,63 +160,75 @@ exclude it from the next draw when the group has more than one candidate.
 2. [done] Pack schema doc plus one sample pack with original lines
 3. [done] State machine and line selector, with tests
 4. [done] `--simulate plug|unplug` and CLI entry point
-5. Tray icon and audio playback
+5. [done] Tray icon and audio playback
 6. Windows power hook (unverifiable here, keep thin)
-7. TTS render script
+7. TTS render script (partly done: SAPI renders the cache; better engines
+   are a new `Renderer` with a different `key`)
 8. Batch line generation script
 
 Stop after step 4 and report. Do not build 5 through 8 until the core is
 confirmed working on Windows hardware.
 
-### Current position (2026-09-02)
+### Current position (2026-09-03)
 
-Steps 1-4 are built and committed on branch `core-pipeline` (`a0e6733`,
-215 tests). The gate above is **not yet cleared**: nothing has run on the
-MSI laptop.
+Steps 1-5 built, 273 tests. **Windows gate cleared 2026-09-03**: all six
+verification commands passed on the MSI, including the `escalation_10` fix
+and `reunion_5_through_60` routing.
 
-What exists: `power/` (interface + fake only), `groups.py`, `state.py`,
-`selector.py`, `variables.py`, `validate.py`, `packs.py`, `pipeline.py`,
-`cli.py`, `packs/field_notes.json` (81 lines), and a test file per module.
+Step 5 shipped tray, audio playback, the wav cache and a SAPI renderer:
 
-Next action is verification, not code. On the Windows laptop, `git pull`
-then:
+| Module | Role |
+|---|---|
+| `audio.py` | `Player` protocol, `NullPlayer`, `WinsoundPlayer` (async, interrupting) |
+| `voice.py` | `VoiceCache` plus `Renderer` protocol, `Pyttsx3Renderer`, `FakeRenderer` |
+| `settings.py` | User prefs in `settings.json`, separate from the counters |
+| `tray.py` | Menu as plain data (`build_menu`), thin pystray shell |
+| `app.py` | `Speaker` and `App`: wires state, pack, cache, player and tray |
 
-```
-pip install -r requirements-dev.txt
-pytest
-python -m chargerwin --validate
-python -m chargerwin --simulate unplug --state-dir %TEMP%\cw
-python -m chargerwin --simulate tick   --state-dir %TEMP%\cw --now <+31min>
-python -m chargerwin --simulate plug   --state-dir %TEMP%\cw
-```
+New CLI: `--tray`, `--warm [--force]`, `--engine sapi|fake`, `--cache-dir`,
+and `--play` on `--simulate`.
 
-That confirms the core is sound on the target OS without needing the power
-hook to exist yet. Step 5 unlocks once it passes.
+Next action: **step 6, the Windows power hook.** `App.on_power_status` and
+`App.resync` are the only entry points it needs; it should call them and
+own nothing else. `App.on_tick` needs a timer while unplugged for the 30
+and 60 minute escalations.
 
-**Fixed 2026-09-03: the 10-minute escalation used to be silent.** It fired,
-had no required group, and escalations do not fall back to `immediate`, so
-the first escalation a user heard was nothing. Resolved by cutting 10 from
-the cadence rather than by writing lines for it. `ESCALATION_MINUTES` is now
-the fire schedule `(30, 60)`; `ESCALATION_GROUP_MINUTES` still lists all
-three so `escalation_10` stays a valid group name and re-adding it later is
-additive.
+Decisions made during step 5:
 
-Decisions made during the build that are not obvious from the code:
+- **SAPI renders the cache; it does not speak at event time.** Asked for
+  during step 5 as a placeholder voice so there is something to hear before
+  a better engine exists. Live synthesis was not built: it contradicts the
+  settled pre-rendered decision, and a delay after yanking the cable is the
+  one thing that kills the joke. Renders go through the same cache a Fish
+  or Kokoro backend will use, so step 7 swaps a class rather than a design.
+- **The cache path includes the engine key**, `<pack>/<engine>/<id>.wav`.
+  Line ids are stable by design, so an id-only key would serve SAPI audio
+  forever after switching engines. Switching is now a miss, and switching
+  back reuses what is there.
+- **Line ids are validated before becoming filenames**
+  (`[A-Za-z0-9][A-Za-z0-9._-]*`). Packs are data; an id must not write
+  outside the cache or create a hidden file. Not yet enforced by the pack
+  validator, only by the cache -- worth moving earlier if a third consumer
+  of ids appears.
+- **`settings.json` is separate from `state.json`.** Counters are written
+  on every event and are cheap to lose; preferences are written rarely and
+  annoying to lose. A corrupt counter file should not cost the user their
+  intensity and mute.
+- **A missing TTS engine raises instead of reporting a successful render of
+  nothing.** `warm()` swallows per-line failures but re-raises `ImportError`,
+  because that is a broken setup rather than a bad line. This is the same
+  silent-failure shape as the `escalation_10` bug.
+- **`Say something` does not touch the counters**, but does record the line
+  as last played, so a demo cannot immediately repeat what a real event just
+  said.
+- **Playback never raises.** A cache miss, a missing device or a wav
+  winsound cannot decode all degrade to a logged warning. Nothing about a
+  sound effect should take the tray down.
 
-- `--simulate` gained a third mode, `tick`, which fires whatever escalation
-  is due. Escalations are timer-driven and so had no other way to be
-  exercised from the CLI.
-- The 160-character cap is validated against *worst-case* rendered width
-  (`variables.WORST_CASE`), not raw source text. A line that fits until
-  `{{absence_human}}` expands is a bug that only shows up in front of a
-  user.
-- Escalation groups never fall back to `immediate`; the selector semantics
-  section above now specifies this rather than contradicting it.
-- A disconnect within 10 minutes of the previous one extends the toggle
-  streak (`state.STREAK_WINDOW_SECONDS`); a streak of 3+ routes a reconnect
-  to `rapid_reunion`. Planning never fixed these numbers.
-- Elapsed time is clamped at zero, so a backward clock step (DST, NTP
-  correction, laptop resume) cannot produce a negative absence.
+Still unverified on Windows: everything in step 5. `pystray`, `Pillow` and
+`pyttsx3` do not install in the Linux dev environment, so the tray, the icon
+and real SAPI rendering have only been exercised through fakes. Verify with
+`--warm` then `--tray` on the laptop before building step 6 on top.
 
 ## Secrets
 
