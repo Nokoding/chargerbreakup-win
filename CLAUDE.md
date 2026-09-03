@@ -161,7 +161,7 @@ exclude it from the next draw when the group has more than one candidate.
 3. [done] State machine and line selector, with tests
 4. [done] `--simulate plug|unplug` and CLI entry point
 5. [done] Tray icon and audio playback
-6. [done, fix unverified] Windows power hook
+6. [done, verified] Windows power hook (sleep/resume path still untested)
 7. TTS render script (partly done: SAPI renders the cache; better engines
    are a new `Renderer` with a different `key`)
 8. Batch line generation script
@@ -171,70 +171,77 @@ confirmed working on Windows hardware.
 
 ### Current position (2026-09-03)
 
-Steps 1-6 built, 321 tests. Steps 1-5 verified on Windows.
+Steps 1-6 built and verified on Windows, 321 tests.
 
-**Step 6 failed on hardware and has been fixed; the fix is unverified.**
-`--watch` started cleanly, registered a valid hwnd and pumped messages, but
-pulling the charger produced nothing at all. Two causes, both now addressed:
+**Step 6 verified on hardware.** Both delivery routes fire: `0x8013`
+(`PBT_POWERSETTINGCHANGE`, targeted) lands first, `0x000A`
+(`PBT_APMPOWERSTATUSCHANGE`, broadcast) confirms just after. Disconnect and
+reconnect both classified correctly, `immediate_late_night` selected off the
+real clock, counters and streaks tracked.
 
-1. **The window was message-only** (`HWND_MESSAGE` as parent). Microsoft's
-   documentation: such a window "does not receive broadcast messages".
-   `WM_POWERBROADCAST` is broadcast to top-level windows, so the window was
-   never eligible for the one message it existed for. It registered, pumped
-   and reported success the whole time. It is now an ordinary top-level
-   window that is simply never shown (`WS_EX_TOOLWINDOW`, no `ShowWindow`).
-2. **`--watch` printed nothing per event**, so a working hook and a dead one
-   looked identical unless audio happened to play. `App.on_reaction` is now
-   an observer that `--watch` prints through, and every `WM_POWERBROADCAST`
-   is logged with its wparam *before* classification, so "message arrived
-   but was not understood" is distinguishable from "no message".
+Worth recording because it was designed but unproven: after the disconnect,
+the second route arrived with `plugged=False` and produced **nothing**.
+Duplicate delivery is deduplicated by `State.observe` diffing against the
+last known status, exactly as intended. Both routes can fire for one cable
+pull at no cost.
 
-Also added: `RegisterPowerSettingNotification` on `GUID_ACDC_POWER_SOURCE`,
-a second delivery route addressed to this window specifically rather than
-broadcast to all of them. Both routes mean READ_STATUS, and `State.observe`
-diffs, so receiving both for one cable pull costs nothing. Belt and braces
-is worth it here: each round trip to the laptop is slow.
+**Two things still open in step 6:**
 
-**Verify like this:**
+1. **Sleep and resume.** The `RESYNC` path has never run. Suspend the
+   machine, pull the cable while it sleeps, wake it: it should adopt
+   "unplugged" silently and say nothing.
 
-```
-python -m chargerwin --watch --tick-seconds 10 -v
-```
+   Watch for one specific failure. `PBT_APMRESUMEAUTOMATIC` is classified
+   as RESYNC, but the power-setting notification for the change that
+   happened during sleep may arrive *before* the resume message rather than
+   after. If it does, the app announces a disconnect that happened while it
+   was asleep, which is precisely what RESYNC exists to prevent. If that
+   happens, the fix is to treat `PBT_APMSUSPEND` as a latch: once seen,
+   every status change is adoption until resume clears it. Not built yet,
+   because it is speculative until the test says otherwise.
 
-Pull the cable and put it back. Expect `DEBUG ... WM_POWERBROADCAST
-wparam=0x000A` (and/or `0x8013`) followed by a printed line each way. If
-the DEBUG line appears but no line follows, the problem is classification or
-state; if no DEBUG line appears at all, the window still is not receiving
-broadcasts.
+2. **`--tray` with the power hook.** Only `--watch` has run against real
+   events. The tray and the hook have never run together, and the
+   interaction is not covered by the Linux tests: pystray owns the main
+   thread while the watcher and ticker own their own, and quitting from the
+   tray menu calls `stop_power_watch`, which posts `WM_CLOSE` across
+   threads. Worth an unplug, an escalation, and a quit from the menu.
 
 Decisions made during step 6:
 
 - **The pure decisions live in `power/messages.py`, away from ctypes.**
   `ctypes.WINFUNCTYPE` does not exist off Windows, so anything importing it
   cannot even be imported here, let alone tested.
+- **Not a message-only window.** Those do not receive broadcast messages;
+  `WM_POWERBROADCAST` is one. Cost a full hardware round trip, because the
+  window registered, pumped and reported success while receiving nothing.
+- **Two delivery routes.** `RegisterPowerSettingNotification` on
+  `GUID_ACDC_POWER_SOURCE` is addressed to this window rather than
+  broadcast, so it does not depend on broadcast eligibility.
 - **Every Win32 function is explicitly prototyped** (`_declare`). An
   unprototyped ctypes function defaults to `restype = c_int`, 32 bits, so
   `CreateWindowExW` and `GetModuleHandleW` would truncate the pointers they
   return on 64-bit Windows.
 - **The WNDPROC is kept alive on the instance.** Dropping that reference
   lets ctypes free the trampoline while Windows still holds the pointer.
-- **Resume is a resync, not an event.** The cable may have moved while the
-  machine slept; announcing a disconnect whose timing is unknown is worse
-  than adopting the state silently.
-- **ACLineStatus 255 is ignored, never guessed.**
+- **Resume is a resync, not an event.** ACLineStatus 255 is likewise
+  ignored rather than guessed at.
 - **The watcher runs its own thread with its own message loop**, because
-  pystray owns the main thread and window messages are delivered per
-  thread. `App` takes an `RLock` around every state transition.
-- **The ticker polls the clock, not the power state.** Nothing broadcasts
-  "thirty minutes have passed".
+  pystray owns the main thread. `App` takes an `RLock` around every state
+  transition.
+- **The ticker polls the clock, not the power state.**
 
 Lesson worth keeping: the step 6 failure was silent because every
 observable signal said success. A component that cannot be tested here must
 log enough to tell "working" from "never invoked", or the first hardware run
-produces no information beyond "no".
+produces no information beyond "no". `App.on_reaction` and the
+pre-classification `WM_POWERBROADCAST` log exist for that reason.
 
-Next action: verify the power hook on the laptop, then step 7 (a better TTS
-engine) or step 8 (batch line generation). Neither is blocked by the other.
+Next action: finish step 6 (sleep/resume, then `--tray` together), then
+step 7. Step 7 is blocked on the Fish Audio probe in `RESEARCH.md` section
+7 -- one real request to check whether `s2.1-pro-free` still answers, since
+its free window officially ended 31 August 2026. Step 8 is not blocked by
+either.
 
 ## Secrets
 
