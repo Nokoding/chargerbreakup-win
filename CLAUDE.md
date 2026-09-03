@@ -201,8 +201,30 @@ commit a key, never log one, never hard-code one as a default.
 
 ## Maintaining these files
 
-Update this file when a decision changes or a new constraint appears. Edit
-sections in place rather than appending notes. Put evidence, comparisons,
-and reasoning in `RESEARCH.md`; keep this file short enough that loading it
-every session stays cheap. Date-stamp anything depending on an external
-free tier.
+**Update this file in the same change that makes the update true.** Never
+finish a piece of work and leave the docs describing the state before it.
+Not a follow-up task, not a later cleanup pass: the doc edit and the code
+edit belong in one commit. This file is the first thing loaded each
+session, so a stale line here misinforms every future session until someone
+notices.
+
+Update after any change that makes one of these false:
+
+- **Build order.** Mark steps done as they land; keep `Current position`
+  saying what exists, what the next action is, and which gates are still
+  closed.
+- **Settled decisions.** A new row when something gets fixed in code that a
+  future session would otherwise re-litigate. If code and this file
+  disagree, resolve it explicitly and say which won and why.
+- **Pack schema / selector semantics.** Any change to group names, required
+  groups, thresholds, fallback order, or the character cap.
+- **Non-obvious build decisions.** Constants and behaviours chosen while
+  implementing that planning never specified. Record the reasoning, not
+  just the value.
+
+Edit sections in place rather than appending notes. Put evidence,
+comparisons, and reasoning in `RESEARCH.md`, and keep the two consistent:
+when a decision here changes, fix the corresponding passage there in the
+same commit. Keep this file short enough that loading it every session
+stays cheap. Date-stamp anything depending on an external free tier, and
+anything that corrects an earlier decision.
